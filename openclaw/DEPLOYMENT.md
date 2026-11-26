@@ -1,14 +1,16 @@
 # OfferLab 面试官 Agent 部署
 
-本包针对已检查的学校 OpenClaw `2026.5.22`。它新增独立的 `interviewer`，使用现有默认模型，仅开放 `read` 工具，读取面试 Skill、题库和评价标准。没有安装浏览器、搜索、命令执行或额外插件，也没有更换模型。
+本包针对已检查的学校 OpenClaw `2026.5.22`。它新增或更新独立的 `interviewer`：首次安装使用现有默认模型，更新时保留该 Agent 已显式选择的模型，仅开放 `read` 工具，读取面试 Skill、题库和评价标准。没有安装浏览器、搜索、命令执行或额外插件，也安装器不负责切换模型；个人 DeepSeek 配置见下文。
 
-## 本地已准备的内容
+2026-11-26，开发者已确认个人 DeepSeek 切换成功、响应加快。已完成接入的环境无需重复执行首次配置。
+
+## 源码与安装范围
 
 - `interviewer/`：可提交的工作区源码，包含角色规则、Skill 和参考资料。
 - `install_interviewer.py`：增量安装脚本，读取目标机器的现有配置，保留凭据、`main`、插件和 Gateway 设置。
 - 项目中的 `openclaw/.openclaw/`：用户复制的完整云端状态，已加入 `.gitignore`。本地准备命令只修改该副本，不表示云端已部署。
 
-Agent 的配置使用 `agents.list`，工作区为 `~/.openclaw/workspace-interviewer`，独立运行目录为 `~/.openclaw/agents/interviewer/agent`。运行状态由 OpenClaw 建立，不复制 `main` 的会话或认证文件。现有全局模型提供商配置继续保留；新 Agent 能否正常取得学校模型凭据，仍需真实调用验证。
+Agent 的配置使用 `agents.list`，工作区为 `~/.openclaw/workspace-interviewer`，独立运行目录为 `~/.openclaw/agents/interviewer/agent`。运行状态由 OpenClaw 建立，不复制 `main` 的会话或认证文件。现有全局模型提供商配置继续保留；首次部署到新环境后，仍需通过真实调用确认模型可用。
 
 ## 部署到学校
 
@@ -85,6 +87,29 @@ bash scripts/dev.sh
 在本机 `.env` 中清空 `OPENCLAW_AGENT_ID`，重启后端，即恢复原有默认 Agent 路径。现有 `main` 不需要重建。
 
 如果需要恢复服务器配置，应先确认安装后是否还有其他配置变化。备份是完整的历史配置，不能在有后续改动时盲目覆盖。工作区备份和配置备份均位于安装摘要给出的目录。
+
+## 接入个人 DeepSeek API
+
+`scripts/configure_deepseek.py` 在学校端读取最新配置，新增 `personal-deepseek` 提供商和模型白名单，默认仅切换 `interviewer`。个人 API Key 通过终端隐藏输入，保存在学校配置文件中（权限 `600`）；本机 Gateway Token 继续使用原值。
+
+在项目根目录上传脚本，再登录学校运行：
+
+```bash
+scp scripts/configure_deepseek.py openclaw:~/configure_deepseek.py
+ssh openclaw
+python3 ~/configure_deepseek.py --check
+python3 ~/configure_deepseek.py
+```
+
+脚本默认值为 `https://api.deepseek.com` 和 `deepseek-flash`，不代表当前服务器实际选用的模型。可用 `--model 模型标识` 指定账户支持的模型，或用 `--base-url HTTPS基础地址` 指向自己的兼容服务；请先确认地址再输入对应平台的密钥。需要同时切换默认模型时添加 `--scope defaults-and-interviewer`，其他 Agent 已显式配置的模型不受影响。
+
+脚本先调用学校版本的 `openclaw config validate`，成功后将原配置备份到 `~/.openclaw/offerlab-backups/deepseek-时间戳-随机标识/`，再写入配置。`--check` 使用占位密钥，仅验证配置格式，不验证密钥、网络或模型工具调用。脚本不会重启 Gateway。学校版本为 `2026.5.22`，使用自定义 OpenAI 兼容提供商，无需升级或安装新版插件。
+
+切换后在本机运行 `python3 scripts/check_gateway.py`，并新建面试验证 Skill 读取和输出。若旧会话固定了原模型，应使用新会话；若服务没有热加载，按学校平台的 supervisord 管理方式重载。不要改本机的 `OPENCLAW_MODEL=openclaw`。
+
+密钥输错或需要更换时，重新上传最新脚本，在学校端执行 `python3 ~/configure_deepseek.py --update-key`，隐藏输入正确的密钥。该选项只更新已有提供商的密钥，仍执行配置校验和备份，不更改模型、API 地址或 Agent 设置。校验成功只代表配置格式正确，需再次运行本机 `scripts/check_gateway.py` 验证真实调用。
+
+使用本次更新后的 `install_interviewer.py` 再次安装时，会保留 interviewer 已选择的模型及 fallback 设置；更新工作区前应重新打包上传，旧安装包仍可能覆盖模型选择。已有 `personal-deepseek` 时首次接入模式拒绝覆盖，请使用 `--update-key` 更换密钥，其他设置基于服务器现有配置调整。
 
 ## 本地副本准备命令
 

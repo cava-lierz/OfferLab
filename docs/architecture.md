@@ -24,7 +24,7 @@
 
 每次生成使用 `offerlab-{interview_id}-{request_uuid}` 作为 `user`，提供完整且有长度上限的资料和问答快照，不依赖 Gateway 历史记忆。这会增加重复上下文的 token 消耗，但避免叠加远端与本地历史。学校版本的会话行为仍需端到端验证。
 
-参考：[OpenClaw HTTP 接口](https://docs.openclaw.ai/gateway/openai-http-api)、[FastAPI 文档](https://fastapi.tiangolo.com/tutorial/)、[Vite 文档](https://vite.dev/guide/)。在线文档可能对应新版本，学校版本以交接记录的实测结果为准。
+参考：[OpenClaw HTTP 接口](https://docs.openclaw.ai/gateway/openai-http-api)、[FastAPI 文档](https://fastapi.tiangolo.com/tutorial/)、[Vite 文档](https://vite.dev/guide/)。在线文档可能对应新版本，本项目当前适配学校 OpenClaw `2026.5.22`。
 
 ## 状态与持久化
 
@@ -60,7 +60,7 @@ FastAPI lifespan 启动每进程 2 个 daemon Worker 和一个心跳线程，直
 
 默认路径将本地 Skill 与题库作为系统提示发送。专用路径通过 `OPENCLAW_AGENT_ID=interviewer` 和 `x-openclaw-agent-id` 请求头路由，使用学校工作区内的 Skill 与参考资料，允许 Agent 调用 `read`；不再向该路径注入原先“禁止读取文件”的提示。两条路径都把简历、JD、回答作为资料 JSON 传递，后端继续验证流程和证据。
 
-已复制的学校配置显示全局工具为 coding profile，并附加多种飞书工具；原 main 工作区有多种课程与办公 Skill。新面试官的配置使用独立工作区、Skill 白名单、仅 read 的工具白名单，以及工作区文件访问范围。源文件和安装步骤见 [部署说明](../openclaw/DEPLOYMENT.md)。学校端已完成安装、原版本配置校验与 CLI 加载确认；脱敏运行诊断已确认 interviewer 路由和 Skill / rubric 的 read 调用。完整真实报告仍需验收。
+已复制的学校配置显示全局工具为 coding profile，并附加多种飞书工具；原 main 工作区有多种课程与办公 Skill。新面试官的配置使用独立工作区、Skill 白名单、仅 read 的工具白名单，以及工作区文件访问范围。源文件和安装步骤见 [部署说明](../openclaw/DEPLOYMENT.md)。学校端已完成安装、原版本配置校验与 CLI 加载确认；脱敏运行诊断已确认 interviewer 路由和 Skill / rubric 的 read 调用。2026-11-26 开发者确认已切到个人 DeepSeek；更新安装器保留 Agent 已选模型。完整真实报告仍需验收，按日期的证据见 [验证记录](verification.md)。
 
 ## API
 

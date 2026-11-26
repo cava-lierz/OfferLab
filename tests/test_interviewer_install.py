@@ -88,6 +88,27 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.state / 'workspace-interviewer').exists())
         self.assertFalse((self.state / '.offerlab-install.lock').exists())
 
+    def test_reinstall_preserves_personal_model_and_provider(self):
+        installer.install(self.state, self.remote)
+        config = json.loads(self.path.read_text())
+        model = {'primary': 'personal-deepseek/custom-model', 'fallbacks': []}
+        provider = {'apiKey': 'personal-test-key', 'models': [{'id': 'custom-model'}]}
+        config['agents']['list'][1]['model'] = model
+        config['models']['providers']['personal-deepseek'] = provider
+        self.path.write_text(json.dumps(config))
+        installer.install(self.state, self.remote)
+        updated = json.loads(self.path.read_text())
+        self.assertEqual(updated['agents']['list'][1]['model'], model)
+        self.assertEqual(updated['models'], config['models'])
+        self.assertEqual(updated['agents']['defaults'], config['agents']['defaults'])
+        self.assertEqual(updated['gateway'], config['gateway'])
+
+    def test_existing_string_model_does_not_require_default_model(self):
+        del self.config['agents']['defaults']['model']
+        self.config['agents']['list'] = [{'id': 'interviewer', 'model': 'personal-deepseek/custom-model'}]
+        merged = installer.merge_config(self.config, self.remote)
+        self.assertEqual(merged['agents']['list'][0]['model'], 'personal-deepseek/custom-model')
+
     def test_concurrent_configuration_edit_is_not_overwritten(self):
         updated = json.dumps(self.config | {'new': 'concurrent-setting'})
         def concurrent(candidate, state):

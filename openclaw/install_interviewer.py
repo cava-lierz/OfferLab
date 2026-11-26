@@ -48,7 +48,11 @@ def merge_config(original, runtime_root):
     if not entries:
         entries.append({'id': 'main', 'default': True,
                         'workspace': defaults.get('workspace', str(runtime_root / 'workspace'))})
-    model = defaults.get('model')
+    existing = next((entry for entry in entries if entry.get('id') == AGENT_ID), None)
+    # Updating workspace sources must retain a separately selected provider/model.
+    model = existing.get('model') if existing is not None else None
+    if model is None:
+        model = defaults.get('model')
     if not model:
         raise ValueError('未发现现有默认模型，需先确认模型配置')
     desired = {
@@ -60,7 +64,6 @@ def merge_config(original, runtime_root):
                   'deny': ['exec', 'process', 'write', 'edit', 'apply_patch'],
                   'fs': {'workspaceOnly': True}},
     }
-    existing = next((entry for entry in entries if entry.get('id') == AGENT_ID), None)
     if existing is not None:
         existing.update(desired)
     else:
