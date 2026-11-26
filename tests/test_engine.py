@@ -68,6 +68,8 @@ class EngineTests(unittest.TestCase):
         self.provider.always_followup = True
         state = self.start(5)
         for i in range(15):
+            if state['status'] == 'between_questions':
+                state = self.engine.act(state['id'], 'next', {'question_id': state['current']['id']})
             self.assertLessEqual(state['current']['followup'], 2)
             state, _ = self.answer(state, request_id=f'request-{i:04d}')
         self.assertEqual(state['status'], 'reporting')

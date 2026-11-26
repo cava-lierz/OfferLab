@@ -86,6 +86,26 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get('/api/interviews/missing')).status_code, 404)
         self.assertEqual((await self.client.post('/api/interviews', json={'role': '', 'resume': 'too short'})).status_code, 422)
 
+    async def test_next_question_is_explicit_and_duplicate_click_does_not_skip(self):
+        created = await self.client.post('/api/interviews', json={'role': '测试下一题', 'resume': '我负责校园项目的需求分析和原型设计，与开发同学协作完成了上线。', 'main_count': 2})
+        base = '/api/interviews/' + created.json()['id']
+        await self.wait_for(base, 'ready')
+        state = (await self.client.post(base + '/start')).json()
+        self.assertEqual((await self.client.post(base + '/next', json={})).status_code, 422)
+        self.assertEqual((await self.client.post(base + '/next', json={'question_id': state['current']['id']})).status_code, 409)
+        for index in range(2):
+            response = await self.client.post(base + '/answers', json={'question_id': state['current']['id'], 'request_id': f'boundary-answer-{index}', 'text': '我完成了需求访谈、原型设计和上线验证。'})
+            self.assertEqual(response.status_code, 202)
+            state = await self.wait_for(base, 'active' if index == 0 else 'between_questions')
+        payload = {'question_id': state['current']['id']}
+        next_response = await self.client.post(base + '/next', json=payload)
+        self.assertEqual(next_response.status_code, 200)
+        self.assertEqual(next_response.json()['status'], 'active')
+        self.assertEqual(next_response.json()['current']['main_index'], 1)
+        repeated = await self.client.post(base + '/next', json=payload)
+        self.assertEqual(repeated.json()['current'], next_response.json()['current'])
+        self.assertEqual(len(repeated.json()['answers']), 2)
+
     async def test_slow_model_does_not_block_acceptance_or_status_reads(self):
         import threading
         from backend.app.main import engine

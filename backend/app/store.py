@@ -23,6 +23,12 @@ class Store:
                 id TEXT PRIMARY KEY, state TEXT NOT NULL,
                 lease TEXT, lease_until REAL NOT NULL DEFAULT 0)""")
             db.execute('CREATE TABLE IF NOT EXISTS workers (id TEXT PRIMARY KEY, heartbeat REAL NOT NULL)')
+            db.execute('''CREATE TABLE IF NOT EXISTS question_reviews (
+                interview_id TEXT NOT NULL, main_index INTEGER NOT NULL,
+                snapshot TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+                timeout_seconds REAL NOT NULL, created_at REAL NOT NULL,
+                attempt TEXT, worker_id TEXT, deadline_at REAL, result TEXT,
+                PRIMARY KEY (interview_id, main_index))''')
 
     @contextmanager
     def connection(self):
@@ -70,7 +76,7 @@ class Store:
                 db.execute("UPDATE interviews SET lease=NULL, lease_until=0 WHERE id=? AND lease=?",
                            (interview_id, owner))
 
-    def save(self, state, owner):
+    def save(self, state, owner, review=None):
         state['updated_at'] = time.time()
         state['revision'] = state.get('revision', 0) + 1
         with self.connection() as db:
@@ -78,6 +84,43 @@ class Store:
                                 (json.dumps(state, ensure_ascii=False), state['id'], owner, time.time()))
             if not result.rowcount:
                 raise AppError('处理已过期，请刷新后重试', 409)
+            if review:
+                db.execute('''INSERT OR IGNORE INTO question_reviews
+                    (interview_id, main_index, snapshot, timeout_seconds, created_at)
+                    VALUES (?, ?, ?, ?, ?)''',
+                    (state['id'], review['main_index'], json.dumps(review['snapshot'], ensure_ascii=False),
+                     review['timeout_seconds'], time.time()))
+            if (state.get('generation') or {}).get('task') == 'report' and (state.get('generation') or {}).get('status') == 'queued':
+                # The final report uses completed reviews only, never waits for optional work.
+                db.execute("UPDATE question_reviews SET status='skipped' WHERE interview_id=? AND status='queued'", (state['id'],))
+
+    def claim_review(self, worker_id):
+        """Claim immutable question data without holding the interview's write lease."""
+        attempt, now = str(uuid.uuid4()), time.time()
+        with self.connection() as db:
+            row = db.execute('''UPDATE question_reviews
+                SET status='running', attempt=?, worker_id=?, deadline_at=? + timeout_seconds
+                WHERE rowid=(SELECT rowid FROM question_reviews WHERE status='queued' ORDER BY created_at LIMIT 1)
+                AND status='queued'
+                RETURNING interview_id, main_index, snapshot''', (attempt, worker_id, now)).fetchone()
+        if row:
+            return {'interview_id': row[0], 'main_index': row[1], 'snapshot': json.loads(row[2]), 'attempt': attempt}
+        return None
+
+    def finish_review(self, review, result=None):
+        with self.connection() as db:
+            changed = db.execute('''UPDATE question_reviews SET status=?, result=?
+                WHERE interview_id=? AND main_index=? AND attempt=? AND status='running' AND deadline_at>=?''',
+                ('completed' if result is not None else 'failed',
+                 json.dumps(result, ensure_ascii=False) if result is not None else None,
+                 review['interview_id'], review['main_index'], review['attempt'], time.time()))
+        return bool(changed.rowcount)
+
+    def completed_reviews(self, interview_id):
+        with self.connection() as db:
+            rows = db.execute('''SELECT main_index,result FROM question_reviews
+                WHERE interview_id=? AND status='completed' ORDER BY main_index''', (interview_id,)).fetchall()
+        return [{'main_index': index, 'report': json.loads(raw)} for index, raw in rows]
 
     def renew_lease(self, interview_id, owner, seconds):
         now = time.time()
@@ -121,3 +164,6 @@ class Store:
                 db.execute('UPDATE interviews SET state=?,lease=NULL,lease_until=0 WHERE id=? AND state=? AND lease IS ?',
                            (json.dumps(state, ensure_ascii=False), interview_id, raw, owner))
             db.execute('DELETE FROM workers WHERE heartbeat<?', (now - 60,))
+            db.execute('''UPDATE question_reviews SET status='failed'
+                WHERE status='running' AND (deadline_at<? OR worker_id NOT IN
+                    (SELECT id FROM workers WHERE heartbeat>?))''', (now, now - 15))

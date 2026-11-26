@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { usePolling, useRoute } from './hooks'
-import { isPending, mergeHistory } from './session'
+import { mergeHistory } from './session'
 import PreparePage from './pages/PreparePage'
 import HistoryPage from './pages/HistoryPage'
 import InterviewPage from './pages/InterviewPage'
@@ -26,7 +26,6 @@ export default function App() {
     const summary: History = { id, role, status, mode, created_at, updated_at, main_count, generation, error, revision, answered: state.answers.length }
     setHistory(previous => mergeHistory(previous, [summary]))
   }
-  const running = history.filter(isPending)
   return <div className="app-shell">
     <aside className="sidebar">
       <a href="#prepare" className="brand"><span className="brand-mark">O<span /></span><span>OfferLab<small>面试练习室</small></span></a>
@@ -51,7 +50,6 @@ export default function App() {
         {health?.mode === 'openclaw' && !health.token_configured && <div className="alert error">Gateway Token 尚未配置，请运行本机配置脚本并重启后端。</div>}
 
         {healthPoll.error && <div className="alert error" role="alert">后端连接暂时不可用，正在重连。<button className="text-button" onClick={healthPoll.refresh}>检查连接</button></div>}
-        {running.length > 0 && view !== 'interview' && <a href="#history" className="background-banner"><span className="activity-dot" /> {running.length} 场练习正在后台生成 · 可从历史记录查看状态</a>}
         {view === 'prepare' && <PreparePage health={health} form={form} setForm={setForm} onCreated={update} />}
         {view === 'history' && <HistoryPage history={history} loaded={historyPoll.loaded} />}
         {sessionId && <InterviewPage key={sessionId} id={sessionId} onUpdate={update} onPrepare={value => { setForm(value); window.location.hash = 'prepare' }} />}

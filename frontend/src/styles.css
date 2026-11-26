@@ -752,21 +752,6 @@ select {
   font-size: .875rem;
   margin-top: 12px;
 }
-.plan-item {
-  display: flex;
-  gap: 20px;
-  padding: 25px 0;
-  border-bottom: 1px solid #ecf0e9;
-}
-.plan-item>span {
-  font-size: .875rem;
-  color: #98b08f;
-}
-.plan-item p {
-  font-size: .875rem;
-  color: #80907e;
-  margin-top: 8px;
-}
 .material-summary details {
   margin-top: 22px;
 }

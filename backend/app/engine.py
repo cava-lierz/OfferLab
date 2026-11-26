@@ -36,6 +36,8 @@ class Engine:
 
     @staticmethod
     def _duplicate(state, action, payload):
+        if action == 'next':
+            return bool(payload.get('question_id')) and payload['question_id'] == state.get('last_advanced_question_id')
         if action != 'answer':
             return False
         prior = next((a for a in state['answers'] if a['request_id'] == payload.get('request_id')), None)
@@ -64,6 +66,7 @@ class Engine:
                 if action == 'retry' or (action == 'finish' and state['status'] == 'reporting'):
                     return state
                 raise AppError('当前生成任务仍在进行，请等待结果后继续。', 409)
+            review = None
             if action == 'answer':
                 request_id = payload.get('request_id')
                 answer_text = payload.get('text', '').strip()
@@ -80,10 +83,17 @@ class Engine:
                     raise AppError('请先生成并确认面试计划', 409)
                 state['current'] = self._question(state, 0)
                 state['status'] = 'active'
+            elif action == 'next':
+                if state['status'] != 'between_questions' or payload.get('question_id') != state['current']['id']:
+                    raise AppError('本题尚未结束或已切换，请刷新后继续', 409)
+                review = self._review(state)
+                state['last_advanced_question_id'] = state['current']['id']
+                state['current'] = self._question(state, state['current']['main_index'] + 1)
+                state['status'] = 'active'
             elif action == 'finish':
                 if state['status'] == 'completed':
                     return state
-                if state['status'] not in ('active', 'awaiting_next', 'reporting'):
+                if state['status'] not in ('active', 'awaiting_next', 'between_questions', 'reporting'):
                     raise AppError('面试尚未开始', 409)
                 if not state['answers']:
                     raise AppError('至少回答一道题后再结束面试')
@@ -99,8 +109,35 @@ class Engine:
                     'id': uid(), 'task': task, 'status': 'queued', 'phase': 'queued',
                     'queued_at': time.time(), 'timeout_seconds': budget,
                 }
-            self.store.save(state, owner)
+            if review:
+                self.store.save(state, owner, review=review)
+            else:
+                self.store.save(state, owner)
             return state
+
+    def _review(self, state):
+        index = state['current']['main_index']
+        snapshot = {key: state[key] for key in ('id', 'role', 'resume', 'jd', 'main_count', 'mode', 'plan', 'current')}
+        snapshot['answers'] = [answer for answer in state['answers'] if answer['question']['main_index'] == index]
+        snapshot['review_scope'] = 'question'
+        snapshot['review_main_index'] = index
+        provider = self.providers[state['mode']]
+        return {'main_index': index, 'snapshot': snapshot,
+                'timeout_seconds': provider.timeout_for('report') if hasattr(provider, 'timeout_for') else 120}
+
+    def process_review(self, worker_id):
+        review = self.store.claim_review(worker_id)
+        if not review:
+            return False
+        snapshot = review['snapshot']
+        try:
+            result = self.providers[snapshot['mode']].generate('report', snapshot)
+            result = validation.report(result, snapshot['answers'], snapshot['mode'])
+        except Exception:
+            # Optional analysis never changes the interview or exposes provider errors.
+            result = None
+        self.store.finish_review(review, result)
+        return True
 
     def process_job(self, interview_id, worker_id):
         with self.store.lease(interview_id) as owner:
@@ -114,8 +151,8 @@ class Engine:
                        deadline_at=now + job['timeout_seconds'], worker_id=worker_id)
             self.store.save(state, owner)
 
-            def generate(provider, task):
-                result = provider.generate(task, state)
+            def generate(provider, task, snapshot=None):
+                result = provider.generate(task, state if snapshot is None else snapshot)
                 job['phase'] = 'validating'
                 self.store.save(state, owner)
                 return result
@@ -154,13 +191,14 @@ class Engine:
                 state['current'] = self._question(state, current['main_index'], current['followup'] + 1, choice['question'])
                 state['status'] = 'active'
             elif current['main_index'] + 1 < state['main_count']:
-                state['current'] = self._question(state, current['main_index'] + 1)
-                state['status'] = 'active'
+                state['status'] = 'between_questions'
             else:
                 state['status'] = 'reporting'
                 # Persist this phase on return. A separate retry generates the report.
         elif state['status'] == 'reporting':
-            state['report'] = validation.report(generate(provider, 'report'), state['answers'], state['mode'])
+            # Completed analyses are hints; original answers remain the source of truth.
+            snapshot = dict(state, question_reviews=self.store.completed_reviews(state['id']))
+            state['report'] = validation.report(generate(provider, 'report', snapshot), state['answers'], state['mode'])
             state['status'] = 'completed'
 
 

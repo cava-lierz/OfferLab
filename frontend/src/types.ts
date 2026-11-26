@@ -1,4 +1,4 @@
-export type Status = 'preparing' | 'ready' | 'active' | 'awaiting_next' | 'reporting' | 'completed'
+export type Status = 'preparing' | 'ready' | 'active' | 'awaiting_next' | 'between_questions' | 'reporting' | 'completed'
 export type Question = { id: string; text: string; topic: string; main_index: number; followup: number }
 export type Answer = { id: string; request_id: string; text: string; question: Question }
 export type Generation = {

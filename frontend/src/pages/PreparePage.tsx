@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { LoadingIndicator } from '../components/LoadingIndicator'
 import { api } from '../api'
 import { useMutation } from '../hooks'
 import type { Health, Interview, Preparation } from '../types'
@@ -28,7 +29,7 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
     {error && <div className="alert error" role="alert">{error} <a href="#history">查看已保存记录</a></div>}
     {notice && <div className="alert success" role="status">{notice}</div>}
           <section className="page-heading"><div className="eyebrow">READY FOR YOUR NEXT OPPORTUNITY</div><h1>让下一次面试，更有准备。</h1><p>带上你的经历和目标岗位，开始一场专属于你的模拟面试。</p></section>
-          <div className="steps"><span className="current"><b>1</b> 准备材料</span><i /><span><b>2</b> 确认计划</span><i /><span><b>3</b> 对话练习</span><i /><span><b>4</b> 回顾成长</span></div>
+          <div className="steps"><span className="current"><b>1</b> 准备材料</span><i /><span><b>2</b> 面试准备</span><i /><span><b>3</b> 对话练习</span><i /><span><b>4</b> 回顾成长</span></div>
           <div className="preparation-grid">
             <form className="card preparation" onSubmit={create}>
               <div className="section-title"><h2>准备你的面试</h2><button type="button" className="text-button" disabled={busy} onClick={() => { setForm(example); setNotice('已填入虚构示例，可修改后使用。') }}>使用示例体验</button></div>
@@ -49,7 +50,7 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
               <textarea id="resume" className="resume-input" required minLength={20} maxLength={20000} placeholder="粘贴你的教育背景、项目经历、个人职责和成果……" value={form.resume} onChange={e => setForm({ ...form, resume: e.target.value })} />
               <div className="label-row"><label htmlFor="jd">岗位描述 <span className="optional">选填</span></label><span>帮助问题更贴近岗位</span></div>
               <textarea id="jd" maxLength={12000} placeholder="粘贴 JD 中的工作职责、任职要求。暂不支持自动读取岗位链接。" value={form.jd} onChange={e => setForm({ ...form, jd: e.target.value })} />
-              <div className="form-bottom"><label htmlFor="count">主问题数量 <select id="count" value={form.main_count} onChange={e => setForm({ ...form, main_count: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} 道</option>)}</select></label><button className="primary" disabled={busy || !health} type="submit">{busy ? '正在保存…' : '保存材料并生成计划'}</button></div>
+              <div className="form-bottom"><label htmlFor="count">主问题数量 <select id="count" value={form.main_count} onChange={e => setForm({ ...form, main_count: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} 道</option>)}</select></label><button className="primary" disabled={busy || !health} type="submit">{busy ? <LoadingIndicator /> : '准备面试'}</button></div>
               <p className="privacy-note">材料保存在本机；OpenClaw 模式下会发送至学校 Gateway 用于生成问题和反馈。</p>
             </form>
             <aside className="right-column">

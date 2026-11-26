@@ -60,6 +60,11 @@ class Answer(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
 
 
+class NextQuestion(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    question_id: str = Field(min_length=1, max_length=100)
+
+
 @app.get('/api/health')
 def health():
     return {'status': 'ok', 'mode': MODE, 'token_configured': bool(os.getenv('OPENCLAW_TOKEN')),
@@ -98,6 +103,11 @@ def accepted(state):
 @app.post('/api/interviews/{interview_id}/answers')
 def answer(interview_id: str, body: Answer):
     return accepted(engine.submit(interview_id, 'answer', body.model_dump()))
+
+
+@app.post('/api/interviews/{interview_id}/next')
+def next_question(interview_id: str, body: NextQuestion):
+    return accepted(engine.submit(interview_id, 'next', body.model_dump()))
 
 
 @app.post('/api/interviews/{interview_id}/{action}')

@@ -145,3 +145,19 @@ class ProviderTests(unittest.TestCase):
                 self.provider.generate('plan', self.state)
         self.assertEqual(caught.exception.status, 503)
         request.assert_not_called()
+
+    def test_question_review_and_final_synthesis_use_existing_report_contract(self):
+        import httpx
+        captured = []
+        def handler(request):
+            captured.append(json.loads(request.content)['messages'][1]['content'])
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]})
+        self.state.update(review_scope='question', review_main_index=0)
+        self.generate(handler, 'report')
+        self.assertIn('仅复盘一组已结束的大题', captured[-1])
+        self.assertIn('请执行 report 任务', captured[-1])
+        del self.state['review_scope']
+        self.state['question_reviews'] = [{'main_index': 0, 'report': {'summary': 'validated-review'}}]
+        self.generate(handler, 'report')
+        self.assertIn('validated-review', captured[-1])
+        self.assertIn('以 answers 原文为准', captured[-1])

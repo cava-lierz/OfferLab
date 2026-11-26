@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { GenerationPanel } from '../src/components/GenerationPanel'
+import { InterviewSetup } from '../src/components/InterviewSetup'
 import { Transcript } from '../src/components/Transcript'
 import { mergeHistory, newest, statusLabel } from '../src/session'
 import { clearDraft, draftKey, readDraft, saveDraft } from '../src/drafts'
@@ -27,28 +28,33 @@ test('history polling preserves a record created after the list request started'
   assert.deepEqual(mergeHistory([created, older], [older]).map(item => item.id), ['new', 'test'])
   assert.equal(mergeHistory([{ ...older, revision: 8, answered: 3 }], [older])[0].answered, 3)
 })
-test('queue uses durable timestamps and does not offer a duplicate generation button', () => {
+test('queued work only shows an accessible spinner without timing or duplicate submission', () => {
   const state: Interview = { ...base, generation: { id: 'job', task: 'report', status: 'queued', phase: 'queued', queued_at: Date.now() / 1000 - 45, timeout_seconds: 300 } }
   const html = panel(state)
-  assert.match(html, /已进入队列/)
-  assert.match(html, /已排队/)
-  assert.match(html, /<strong>45<\/strong>/)
-  assert.match(html, /可以离开或刷新/)
-  assert.doesNotMatch(html, /<button|预计完成时间|%/)
-  assert.equal(statusLabel(state), '复盘报告排队中')
+  assert.match(html, /role="status" aria-label="加载中"/)
+  assert.match(html, /loading-spinner/)
+  assert.doesNotMatch(html, /<button|秒|排队|模型|校验|<strong>|%/)
+  assert.equal(statusLabel(state), '加载中')
 })
-test('running state distinguishes real validation and the timeout is not an ETA', () => {
+test('running validation has the same simple loading indicator', () => {
   const html = panel({ ...base, generation: { id: 'job', task: 'report', status: 'running', phase: 'validating', queued_at: 1, started_at: Date.now() / 1000 - 80, deadline_at: Date.now() / 1000 + 220, timeout_seconds: 300 } })
-  assert.match(html, /已收到模型结果，正在校验/)
-  assert.match(html, /不是预计完成时间/)
-  assert.doesNotMatch(html, /<button/)
+  assert.match(html, /loading-spinner/)
+  assert.doesNotMatch(html, /<button|秒|排队|模型|校验|预计/)
 })
 test('failed and legacy records expose retry without hiding saved answers', () => {
   const html = panel({ ...base, error: '模型超时' })
-  assert.match(html, /重新生成/)
+  assert.match(html, /重试/)
   assert.match(html, /模型超时/)
   assert.match(html, /不会重复提交回答/)
   assert.match(panel(base), /生成复盘报告/)
+})
+test('prepared interview reveals neither planned questions nor future topics', () => {
+  const state: Interview = { ...base, status: 'ready', main_count: 2,
+    plan: [{ topic: '隐藏主题一', question: '隐藏问题一' }, { topic: '隐藏主题二', question: '隐藏问题二' }] }
+  const html = renderToStaticMarkup(<InterviewSetup session={state} busy={false} onStart={() => {}} onPrepare={() => {}} />)
+  assert.match(html, /开始面试/)
+  assert.match(html, /2 道主问题/)
+  assert.doesNotMatch(html, /隐藏主题|隐藏问题/)
 })
 test('saved transcript remains available while waiting and escapes user HTML', () => {
   const html = renderToStaticMarkup(<Transcript answers={[{ id: 'answer', request_id: 'req', text: '<script>example</script>', question: { id: 'q', text: '问题', topic: '项目', main_index: 0, followup: 1 } }]} />)

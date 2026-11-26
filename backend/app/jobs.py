@@ -24,7 +24,7 @@ class JobRunner:
     def start(self):
         self.store.heartbeat(self.id)
         self.store.recover_interrupted()
-        for target in [self._monitor] + [self._work] * self.concurrency:
+        for target in [self._monitor] + [self._work] * self.concurrency + [self._review_work]:
             thread = threading.Thread(target=target, daemon=True, name='offerlab-jobs')
             self.threads.append(thread)
             thread.start()
@@ -62,4 +62,17 @@ class JobRunner:
                             self.store.retire_worker(self.id)
             except Exception:
                 logger.error('Job queue unavailable; will retry')
+            self.stopped.wait(0.5)
+
+    def _review_work(self):
+        # One separate slot keeps optional reviews from occupying every foreground worker.
+        while not self.stopped.is_set():
+            try:
+                if not self.store.queued():
+                    self.engine.process_review(self.id)
+            except Exception:
+                logger.error('Question review unavailable; interview remains usable')
+            finally:
+                if self.stopped.is_set():
+                    self.store.retire_worker(self.id)
             self.stopped.wait(0.5)

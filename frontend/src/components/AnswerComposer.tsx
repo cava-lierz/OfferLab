@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { LoadingIndicator } from './LoadingIndicator'
 import { api } from '../api'
 import { clearDraft, draftKey, readDraft, saveDraft } from '../drafts'
 import { useMutation } from '../hooks'
@@ -35,7 +36,7 @@ export function AnswerComposer({ interviewId, question, onSaved }: {
       }} placeholder="可以从背景、你的行动和结果展开。尽量用具体细节说明。" />
     {error && <div className="alert error" role="alert">{error} 原内容再次提交会核对保存状态。</div>}
     <div className="answer-footer"><span>{draft.text.length} / 8000 · {stored ? '草稿保存在当前浏览器' : '浏览器无法保存草稿，请暂勿关闭页面'}</span>
-      <button className="primary" disabled={busy || !draft.text.trim()}>{busy ? '正在保存回答…' : '保存回答，继续面试'}</button>
+      <button className="primary" disabled={busy || !draft.text.trim()}>{busy ? <LoadingIndicator /> : '提交回答'}</button>
     </div>
   </form>
 }
