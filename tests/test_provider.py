@@ -23,6 +23,17 @@ class ProviderTests(unittest.TestCase):
         with patch('httpx.AsyncClient', return_value=client):
             return self.provider.generate(task, self.state)
 
+    def test_practice_focus_reaches_model_alongside_full_job_description(self):
+        import httpx
+        self.state.update(jd='岗' * 12000, practice_focus='表达结构。说明个人贡献。')
+        def handler(request):
+            prompt = json.loads(request.content)['messages'][-1]['content']
+            self.assertIn(self.state['jd'], prompt)
+            self.assertIn(self.state['practice_focus'], prompt)
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]})
+        for task in ('plan', 'decision', 'report'):
+            self.generate(handler, task)
+
     def test_report_has_its_own_deadline_without_extending_plan_deadline(self):
         import httpx
         self.provider.timeout = .01

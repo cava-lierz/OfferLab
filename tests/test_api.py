@@ -82,6 +82,20 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('text/markdown', export.headers['content-type'])
         self.assertIn('演示模式', export.text)
 
+    async def test_create_replay_returns_current_state_without_restarting_plan(self):
+        form = {'role': '测试岗位', 'resume': '我参与校园项目的调研、原型设计、测试与交付。',
+                'jd': '岗' * 12000, 'practice_focus': '讲清楚自己的贡献', 'request_id': 'create-after-timeout'}
+        first = (await self.client.post('/api/interviews', json=form)).json()
+        base = '/api/interviews/' + first['id']
+        ready = await self.wait_for(base, 'ready')
+        replay = (await self.client.post('/api/interviews', json=form)).json()
+        self.assertEqual(replay, ready)
+        self.assertEqual(replay['jd'], form['jd'])
+        self.assertEqual(replay['practice_focus'], form['practice_focus'])
+        self.assertEqual((await self.client.post('/api/interviews', json=form | {'role': '另一个岗位'})).status_code, 409)
+        await self.client.delete(base)
+        self.assertEqual((await self.client.post('/api/interviews', json=form)).status_code, 410)
+
     async def test_delete_is_idempotent_and_isolates_the_selected_record(self):
         form = {'role': '删除测试', 'resume': '我组织校园项目访谈，设计原型，并参与开发与验证，完成了团队合作项目。'}
         removed = (await self.client.post('/api/interviews', json=form)).json()['id']

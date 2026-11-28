@@ -130,9 +130,11 @@ def install(state_dir, runtime_root, validator=None):
                         raise ValueError('工作区文件路径包含符号链接，拒绝写入')
                     atomic_write(destination, (SOURCE / relative).read_bytes(), 0o644)
                 atomic_write(workspace / MARKER, b'{"owner":"OfferLab","version":1}\n')
-                atomic_write(config_path, candidate_bytes)
+                if config_path.read_bytes() != original_bytes:
+                    raise ValueError('配置在安装期间发生变化，已保留最新配置，请重新安装。')
+                os.replace(staged_config, config_path)
             except Exception:
-                atomic_write(config_path, original_bytes)
+                # Config replacement is atomic and last. Only workspace changes need undoing.
                 if workspace.exists():
                     shutil.rmtree(workspace)
                 if (backup / 'workspace-interviewer').exists():

@@ -79,6 +79,8 @@ class OpenClawProvider:
         # This avoids relying on unverified persistence semantics in the school version.
         fields = ('role', 'resume', 'jd', 'main_count') if task == 'plan' else ('role', 'resume', 'jd', 'main_count', 'plan', 'current', 'answers')
         context = {k: state[k] for k in fields}
+        if state.get('practice_focus'):
+            context['practice_focus'] = state['practice_focus']
         guidance = ''
         if task == 'report' and state.get('review_scope') == 'question':
             context['review_main_index'] = state['review_main_index']

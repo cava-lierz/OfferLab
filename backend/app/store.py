@@ -23,6 +23,8 @@ class Store:
                 id TEXT PRIMARY KEY, state TEXT NOT NULL,
                 lease TEXT, lease_until REAL NOT NULL DEFAULT 0)""")
             db.execute('CREATE TABLE IF NOT EXISTS workers (id TEXT PRIMARY KEY, heartbeat REAL NOT NULL)')
+            db.execute('''CREATE TABLE IF NOT EXISTS creation_requests (
+                request_id TEXT PRIMARY KEY, interview_id TEXT NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS question_reviews (
                 interview_id TEXT NOT NULL, main_index INTEGER NOT NULL,
                 snapshot TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
@@ -39,10 +41,23 @@ class Store:
         finally:
             db.close()
 
-    def create(self, state):
+    def create(self, state, request_id=None):
         with self.connection() as db:
+            if request_id is not None:
+                inserted = db.execute('''INSERT INTO creation_requests(request_id,interview_id) VALUES (?,?)
+                    ON CONFLICT(request_id) DO NOTHING''', (request_id, state['id']))
+                if not inserted.rowcount:
+                    row = db.execute('''SELECT i.state FROM creation_requests r JOIN interviews i
+                        ON i.id=r.interview_id WHERE r.request_id=?''', (request_id,)).fetchone()
+                    if not row:
+                        raise AppError('这次创建的面试已删除，请重新创建。', 410)
+                    saved = json.loads(row[0])
+                    if any(saved.get(k) != state.get(k) for k in ('role', 'resume', 'jd', 'main_count', 'practice_focus')):
+                        raise AppError('相同创建标识对应了不同材料，请重新创建。', 409)
+                    return saved
             db.execute("INSERT INTO interviews(id,state) VALUES (?,?)",
                        (state['id'], json.dumps(state, ensure_ascii=False)))
+        return state
 
     def get(self, interview_id):
         with self.connection() as db:

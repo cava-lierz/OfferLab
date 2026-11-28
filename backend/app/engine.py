@@ -12,18 +12,28 @@ class Engine:
     def __init__(self, store, providers):
         self.store, self.providers = store, providers
 
-    def create(self, role, resume, jd='', main_count=5, mode='demo'):
+    def create(self, role, resume, jd='', main_count=5, mode='demo', *, request_id=None, practice_focus=''):
         if mode not in self.providers or type(main_count) is not int or not 1 <= main_count <= 5:
             raise AppError('无效的模式或问题数量')
         role, resume, jd = role.strip(), resume.strip(), jd.strip()
         if not 1 <= len(role) <= 100 or not 20 <= len(resume) <= 20000 or len(jd) > 12000:
             raise AppError('请填写职位（1–100 字）和简历（20–20000 字）；JD 最多 12000 字')
+        practice_focus = practice_focus.strip()
+        if len(practice_focus) > 4000:
+            raise AppError('本次练习重点最多 4000 字')
         state = {'id': uid(), 'role': role, 'resume': resume, 'jd': jd, 'main_count': main_count,
                  'mode': mode, 'status': 'preparing', 'plan': [], 'current': None, 'answers': [],
-                 'report': None, 'error': None, 'generation': None, 'revision': 0, 'created_at': time.time(), 'updated_at': time.time()}
-        self.store.create(state)
-        # Return the durable ID before starting any slow network work.
-        return state
+                 'report': None, 'error': None, 'generation': self._queued_job(mode, 'plan'),
+                 'revision': 0, 'created_at': time.time(), 'updated_at': time.time()}
+        if practice_focus:
+            state['practice_focus'] = practice_focus
+        return self.store.create(state, request_id)
+
+    def _queued_job(self, mode, task):
+        provider = self.providers[mode]
+        budget = provider.timeout_for(task) if hasattr(provider, 'timeout_for') else 120
+        return {'id': uid(), 'task': task, 'status': 'queued', 'phase': 'queued',
+                'queued_at': time.time(), 'timeout_seconds': budget}
 
     def _question(self, state, index, followup=0, question=None):
         return {'id': uid(), 'main_index': index, 'followup': followup,
@@ -103,12 +113,7 @@ class Engine:
             task = {'preparing': 'plan', 'awaiting_next': 'decision', 'reporting': 'report'}.get(state['status'])
             state['error'] = None
             if task:
-                provider = self.providers[state['mode']]
-                budget = provider.timeout_for(task) if hasattr(provider, 'timeout_for') else 120
-                state['generation'] = {
-                    'id': uid(), 'task': task, 'status': 'queued', 'phase': 'queued',
-                    'queued_at': time.time(), 'timeout_seconds': budget,
-                }
+                state['generation'] = self._queued_job(state['mode'], task)
             if review:
                 self.store.save(state, owner, review=review)
             else:
@@ -120,6 +125,8 @@ class Engine:
         snapshot = {key: state[key] for key in ('id', 'role', 'resume', 'jd', 'main_count', 'mode', 'plan', 'current')}
         snapshot['answers'] = [answer for answer in state['answers'] if answer['question']['main_index'] == index]
         snapshot['review_scope'] = 'question'
+        if state.get('practice_focus'):
+            snapshot['practice_focus'] = state['practice_focus']
         snapshot['review_main_index'] = index
         provider = self.providers[state['mode']]
         return {'main_index': index, 'snapshot': snapshot,

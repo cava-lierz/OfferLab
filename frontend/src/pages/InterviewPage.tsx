@@ -50,7 +50,7 @@ export default function InterviewPage({ id, onUpdate, onPrepare }: {
   </div>
   const pending = isPending(session)
   const needsGeneration = ['preparing', 'awaiting_next', 'reporting'].includes(session.status)
-  const prepare = () => onPrepare({ role: session.role, resume: session.resume, jd: session.jd, main_count: session.main_count })
+  const prepare = () => onPrepare({ role: session.role, resume: session.resume, jd: session.jd, main_count: session.main_count, practice_focus: session.practice_focus })
   return <>
     <section className="page-heading compact"><div className="eyebrow">{session.status === 'completed' ? 'REFLECT. REFINE. REPEAT.' : 'ONE QUESTION AT A TIME'}</div>
       <h1>{session.role}{!pending && <span className="heading-status">{statusLabel(session)}</span>}</h1>

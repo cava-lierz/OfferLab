@@ -15,6 +15,18 @@ class JobTests(unittest.TestCase):
     create = test_engine.EngineTests.create
     start = test_engine.EngineTests.start
 
+    def test_concurrent_creation_queues_one_durable_plan(self):
+        from concurrent.futures import ThreadPoolExecutor
+        barrier = threading.Barrier(2)
+        def create():
+            barrier.wait(timeout=5)
+            return self.engine.create('测试', '这是用于并发测试的一段虚构简历和项目经历。', request_id='same-create')
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(create) for _ in range(2)]
+            first, second = [future.result() for future in futures]
+        self.assertEqual(first, second)
+        self.assertEqual(Store(self.path).queued(), [first['id']])
+
     def test_answer_acknowledged_before_model_runs(self):
         state = self.start()
         self.provider.fail = 'decision'

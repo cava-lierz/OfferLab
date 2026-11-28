@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LoadingIndicator } from '../components/LoadingIndicator'
-import { api } from '../api'
+import { api, ApiError } from '../api'
+import { clearCreation, creationId } from '../creation'
 import { useMutation } from '../hooks'
 import type { Health, Interview, Preparation } from '../types'
 
@@ -17,10 +18,22 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
 }) {
   const { busy, error, run } = useMutation()
   const [notice, setNotice] = useState('')
+  const [parsedResume, setParsedResume] = useState<string | null>(null)
+  const edits = useRef(0)
+  const upload = useRef(0)
+  useEffect(() => () => { upload.current++ }, [])
   function create(e: FormEvent) {
     e.preventDefault()
     void run(async () => {
-      const created = await api<Interview>('/interviews', form)
+      const request_id = await creationId(form)
+      let created: Interview
+      try {
+        created = await api<Interview>('/interviews', { ...form, request_id })
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 409 || err.status === 410)) clearCreation(request_id)
+        throw err
+      }
+      clearCreation(request_id)
       onCreated(created)
       if ((window.location.hash.slice(1) || 'prepare') === 'prepare') window.location.hash = 'interview/' + created.id
     })
@@ -32,7 +45,7 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
           <div className="steps"><span className="current"><b>1</b> 准备材料</span><i /><span><b>2</b> 面试准备</span><i /><span><b>3</b> 对话练习</span><i /><span><b>4</b> 回顾成长</span></div>
           <div className="preparation-grid">
             <form className="card preparation" onSubmit={create}>
-              <div className="section-title"><h2>准备你的面试</h2><button type="button" className="text-button" disabled={busy} onClick={() => { setForm(example); setNotice('已填入虚构示例，可修改后使用。') }}>使用示例体验</button></div>
+              <div className="section-title"><h2>准备你的面试</h2><button type="button" className="text-button" disabled={busy} onClick={() => { setParsedResume(null); setForm(example); setNotice('已填入虚构示例，可修改后使用。') }}>使用示例体验</button></div>
               <label htmlFor="role">目标岗位 <span className="required">*</span></label>
               <input id="role" placeholder="例如：Java 后端实习 · 技术一面（可附目标公司）" required maxLength={100} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} />
               <div className="label-row"><label htmlFor="resume">简历与项目经历 <span className="required">*</span></label><span>至少 20 字</span></div>
@@ -40,16 +53,30 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
                 <input type="file" accept=".pdf,.txt" disabled={busy} onChange={e => {
                   const file = e.target.files?.[0]; e.target.value = ''; if (!file) return
                   void run(async () => {
+                    const attempt = ++upload.current
+                    const startingEdit = edits.current
+                    setParsedResume(null); setNotice('')
                     if (file.size > 5 * 1024 * 1024) throw new Error('文件不能超过 5 MB。')
                     const body = new FormData(); body.append('file', file)
                     const result = await api<{ text: string }>('/resumes/parse', body)
+                    if (upload.current !== attempt) return
+                    if (edits.current !== startingEdit) {
+                      setParsedResume(result.text)
+                      return
+                    }
                     setForm(previous => ({ ...previous, resume: result.text })); setNotice('解析完成，请检查并修正下方文本后继续。')
                   })
                 }} />
               </label>
-              <textarea id="resume" className="resume-input" required minLength={20} maxLength={20000} placeholder="粘贴你的教育背景、项目经历、个人职责和成果……" value={form.resume} onChange={e => setForm({ ...form, resume: e.target.value })} />
+              <textarea id="resume" className="resume-input" required minLength={20} maxLength={20000} placeholder="粘贴你的教育背景、项目经历、个人职责和成果……" value={form.resume} onChange={e => { edits.current++; setForm({ ...form, resume: e.target.value }) }} />
+              {parsedResume !== null && <div className="confirm-box"><p role="status">文件已解析。你在等待时编辑了简历，当前保留手写版本。</p>
+                <details><summary>查看文件中的文本</summary><p className="preserve">{parsedResume}</p></details>
+                <button type="button" className="text-button" onClick={() => { setForm(previous => ({ ...previous, resume: parsedResume })); setParsedResume(null) }}>使用文件文本</button>
+                <button type="button" className="text-button" onClick={() => setParsedResume(null)}>保留当前文本</button>
+              </div>}
               <div className="label-row"><label htmlFor="jd">岗位描述 <span className="optional">选填</span></label><span>帮助问题更贴近岗位</span></div>
               <textarea id="jd" maxLength={12000} placeholder="粘贴 JD 中的工作职责、任职要求。暂不支持自动读取岗位链接。" value={form.jd} onChange={e => setForm({ ...form, jd: e.target.value })} />
+              {form.practice_focus !== undefined && <><label htmlFor="practice-focus">本次练习重点</label><textarea id="practice-focus" rows={2} maxLength={4000} value={form.practice_focus} onChange={e => setForm({ ...form, practice_focus: e.target.value })} /></>}
               <div className="form-bottom"><label htmlFor="count">主问题数量 <select id="count" value={form.main_count} onChange={e => setForm({ ...form, main_count: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} 道</option>)}</select></label><button className="primary" disabled={busy || !health} type="submit">{busy ? <LoadingIndicator /> : '准备面试'}</button></div>
               <p className="privacy-note">材料保存在本机。OpenClaw 模式会将材料发送至学校 Gateway。专用面试官可使用公开岗位关键词联网备课。</p>
             </form>
