@@ -1,18 +1,12 @@
-# OfferLab 面试官 Agent 部署
+# 学校 OpenClaw 面试官部署说明
 
-本包针对学校 OpenClaw `2026.5.22`。安装器新增或更新 `interviewer`，保留已选模型，配置 `read`、`web_search` 和 `web_fetch` 三个工具。面试官 Skill 决定如何拟定查询、筛选面经及设计岗位题。搜索服务使用学校 Gateway 的配置。
+我在学校已有的 OpenClaw `2026.5.22` 上为 OfferLab 配置了专用 Agent，ID 为 `interviewer`。独立工作区承载面试官的角色规则、Skill、题库和评分标准，学校的默认 Agent 继续使用自己的工作区。部署验收分别检查学校 CLI 的加载结果、本机后端的路由目标和真实任务的工具调用轨迹。
 
-## 源码与安装范围
+## 部署包与安装位置
 
-- `interviewer/`：可提交的工作区源码，包含角色规则、Skill 和参考资料。
-- `install_interviewer.py`：增量安装脚本，读取目标机器的现有配置，保留凭据、`main`、插件和 Gateway 设置。
-- 项目中的 `openclaw/.openclaw/`：用户复制的完整云端状态，已加入 `.gitignore`。本地准备命令只修改该副本，不表示云端已部署。
+本机项目根目录的打包命令生成 `data/offerlab-interviewer.tar.gz`。安装包按清单收录安装器、本说明和 `interviewer/` 工作区源码。项目里的 `openclaw/.openclaw/` 是供本地比对的状态副本，学校现有的运行配置、凭据和会话由学校实例管理。
 
-Agent 的配置使用 `agents.list`，工作区为 `~/.openclaw/workspace-interviewer`，独立运行目录为 `~/.openclaw/agents/interviewer/agent`。运行状态由 OpenClaw 建立，不复制 `main` 的会话或认证文件。现有全局模型提供商配置继续保留；首次部署到新环境后，仍需通过真实调用确认模型可用。
-
-## 部署到学校
-
-在本机项目根目录打包并上传：
+**本机打包、上传及登录**
 
 ```bash
 python3 scripts/manage.py package
@@ -20,26 +14,20 @@ scp data/offerlab-interviewer.tar.gz openclaw:~/
 ssh openclaw
 ```
 
-进入学校终端后运行：
+**学校终端解包与安装**
 
 ```bash
 tar -xzf ~/offerlab-interviewer.tar.gz -C ~
 python3 ~/offerlab-interviewer/install_interviewer.py --install
 ```
 
-安装器会：
+首次安装和后续更新使用同一入口。安装器读取服务器现有配置，核对版本，把面试官条目合并进 `agents.list`。首次安装沿用默认模型，更新时沿用面试官已选模型及 fallback。工作区位于 `~/.openclaw/workspace-interviewer`，独立运行目录为 `~/.openclaw/agents/interviewer/agent`。
 
-1. 检查当前配置及实际 OpenClaw 版本。
-2. 在临时配置文件上执行 `openclaw config validate`；失败则不修改原配置。
-3. 将原配置和已有的本工具管理的面试官工作区备份到 `~/.openclaw/offerlab-backups/时间戳/`。
-4. 更新面试官工作区并原子替换配置；写入失败时恢复备份。
-5. 输出不含 Token 的安装摘要。不会自动重启 Gateway。
+每次更新先对候选配置执行 `openclaw config validate`。校验通过后，安装器把原配置和已由本工具管理的面试官工作区备份到 `~/.openclaw/offerlab-backups/` 的时间戳目录，再更新工作区并原子替换配置。写入失败时会回滚。安装摘要的 `backup` 字段给出备份位置，`validated_by_openclaw` 记录校验结果。Gateway 的加载情况由后续真实请求确认。
 
-不要把本机复制的整个 `.openclaw` 覆盖回学校。安装包仅含明确列出的源码文件，服务器配置始终以安装时读取的最新文件为基础。
+## 学校端加载与搜索配置
 
-## 验证加载
-
-在学校终端执行：
+学校终端提供三项独立检查。
 
 ```bash
 openclaw config validate
@@ -47,77 +35,81 @@ openclaw agents list
 openclaw skills --agent interviewer list
 ```
 
-确认 Agent 列表中存在 `interviewer`，工作区指向新目录；确认 `offerlab-interviewer` 在该 Agent 的可用 Skill 中。复制文件成功、配置校验通过和模型实际执行 Skill 是三个不同的验收步骤。
+配置应通过校验，Agent 列表应包含 `interviewer` 及对应工作区，Skill 列表应包含 `offerlab-interviewer`。字段兼容性以学校版本的校验结果为准，CLI 接受的参数位置可由 `openclaw skills --help` 确认。
 
-若配置命令或工具字段不被该版本接受，保留错误信息以便适配，不要直接删除校验步骤。CLI 若不接受上述 `--agent` 参数位置，先查看 `openclaw skills --help`。
+专用面试官有三个工具。`read` 读取工作区内的规则与参考资料，`web_search` 在备课时检索公开面经，`web_fetch` 在摘要不足时读取原文。搜索提供商配置在学校 Gateway 上，安装器只配置面试官的工具权限。已有可用提供商时，面试官可直接使用。提供商及搜索密钥通过学校终端的配置命令管理。
 
-Gateway 是否热加载需按学校运行实例验证。若 CLI 已识别新 Agent 而 HTTP 调用仍未识别，再检查服务加载情况。学校进程由 supervisord 管理，不使用 `systemctl --user`，不为安装文件而直接升级或重建 Gateway。
+```bash
+openclaw configure --section web
+```
 
-## 学校端的搜索服务
+该设置适用于整个 Gateway，提供商的选择取决于学校的出网条件和账号权限。[对应版本的搜索工具文档](https://github.com/openclaw/openclaw/blob/v2026.5.22/docs/tools/web.md)
 
-已有可用搜索提供商时，更新面试官后可直接使用。需要选择或配置提供商时，在学校 OpenClaw 所在环境运行 `openclaw configure --section web`。按学校出网条件和账号权限选择服务；如果需要密钥，配置在学校端。此选项影响该 Gateway 的搜索提供商。安装器仅调整专用 Agent 的工具白名单。[对应版本的 OpenClaw 搜索工具文档](https://github.com/openclaw/openclaw/blob/v2026.5.22/docs/tools/web.md)
+## 本机应用路由
 
-验收时在目标岗位里填写“Java 后端实习 · 技术一面”，在 JD 中写明“请检索该岗位的公开面经来备课”，简历使用虚构材料。计划完成后从本机执行 `python3 scripts/manage.py runs`。找到 `agent=interviewer`、`task=plan` 的那次运行，检查 `available_tools`、实际 `tool_call` 及对应的 `tool_result`。对返回结构化列表的搜索提供商，`result_count` 表示结果条数。面试官可根据摘要充分程度决定是否调用 `web_fetch`。若工具不可用，检查搜索提供商和学校出网权限；新工具未出现在运行轨迹时，核对 Gateway 是否加载新配置及全局或沙箱工具策略。
-
-## 本机应用切换
-
-云端安装并验证后，在本机根目录 `.env` 添加或修改：
+本机后端从项目根目录的 `.env` 读取 Gateway 地址、Token 和运行模式。专用面试官使用以下配置。
 
 ```dotenv
+OFFERLAB_MODE=openclaw
+OPENCLAW_MODEL=openclaw
 OPENCLAW_AGENT_ID=interviewer
 ```
 
-保留原来的 `OPENCLAW_MODEL=openclaw`、Gateway 地址和 Token。后端通过 `x-openclaw-agent-id: interviewer` 指定目标 Agent，避免把 Agent ID 和模型提供商 ID 混淆。
+`OPENCLAW_MODEL` 是兼容接口接受的入口标识。`OPENCLAW_AGENT_ID` 经 `x-openclaw-agent-id` 请求头选择工作区。实际生成回复的模型提供商由学校 Agent 配置决定。本机首次配置 Token 的命令是 `python3 scripts/manage.py gateway-config`，通过终端隐藏输入。SSH 转发由单独终端中的 `python3 scripts/manage.py tunnel` 保持在线。
 
-重启本机应用：
+配置改动在本机后端重启后生效。启动命令在项目根目录执行。
 
 ```bash
 python3 scripts/manage.py dev
 ```
 
-访问 `http://127.0.0.1:8000/api/health` 应看到 `agent_id: interviewer`。新建一场 OpenClaw 面试进行验收。此字段反映后端目标配置，不单独证明云端实际路由正确；仍需结合 Agent 会话或运行记录核对。
+本机健康接口的 `agent_id` 字段反映后端配置的目标。连接检查 `python3 scripts/manage.py gateway-check` 会使用同一目标发起一次最小模型请求。对应的学校会话轨迹记录实际执行该请求的 Agent。[本机健康接口](http://127.0.0.1:8000/api/health)
 
-首次验收使用虚构示例，检查：
+## 工具调用的验收依据
 
-- 计划生成时，真实调用 `read` 读取 Skill 和题库。
-- 需要追问时，Agent 根据回答缺口决定继续追问或换题。
-- 复盘时，真实读取评价标准，报告引文通过本机后端校验。
-- 记录工具调用次数和总耗时。专用 Agent 不等同于模型自动加速，不能把文件存在或模型自称读取过当作调用证据。
+备课验收可以使用虚构简历，以“Java 后端实习 · 技术一面”为目标岗位，在 JD 中提出检索公开面经的备课要求。计划完成后，本机可读取已有运行的脱敏摘要。
 
-`python3 scripts/manage.py gateway-check` 会携带相同 Agent 目标进行基础连接检查，但不验证完整面试或工具调用轨迹。
+```bash
+python3 scripts/manage.py runs
+```
 
-## 切回默认 Agent
+在对应的 `agent=interviewer`、`task=plan` 记录中，`available_tools` 表示当时可用的工具，`tool_call` 和对应的 `tool_result` 说明实际调用及结果。对于返回结构化列表的提供商，`result_count` 表示工具返回的条数。面试官可以依据搜索摘要出题，也可以通过 `web_fetch` 补读原文。
 
-在本机 `.env` 中清空 `OPENCLAW_AGENT_ID`，重启后端，即恢复原有默认 Agent 路径。现有 `main` 不需要重建。
+追问验收关注问题是否对应刚提交的回答。报告验收关注评分标准的读取记录，以及每项评分的引文是否能在对应回答中定位。运行摘要同时保留任务耗时和工具调用情况。搜索失败通常从提供商配置和学校出网条件排查。可用工具列表缺项时，排查范围包括全局策略、沙箱和 Gateway 已加载的配置。CLI 已识别 Agent 而 HTTP 请求仍未路由到它时，可通过学校实例的 supervisord 检查 Gateway 是否已加载新配置。
 
-如果需要恢复服务器配置，应先确认安装后是否还有其他配置变化。备份是完整的历史配置，不能在有后续改动时盲目覆盖。工作区备份和配置备份均位于安装摘要给出的目录。
+## 个人 DeepSeek 模型配置
 
-## 接入个人 DeepSeek API
-
-`scripts/configure_deepseek.py` 在学校端读取最新配置，新增 `personal-deepseek` 提供商和模型白名单，默认仅切换 `interviewer`。个人 API Key 通过终端隐藏输入，保存在学校配置文件中（权限 `600`）；本机 Gateway Token 继续使用原值。
-
-在项目根目录上传脚本，再登录学校运行：
+专用面试官安装后可以单独绑定个人 DeepSeek 提供商。个人 API Key 由学校端使用，本机仍用原 Gateway Token 认证。配置脚本随项目提供，需从**本机项目根目录**单独上传。
 
 ```bash
 scp scripts/configure_deepseek.py openclaw:~/configure_deepseek.py
 ssh openclaw
+```
+
+**学校终端的配置检查与首次写入**
+
+```bash
 python3 ~/configure_deepseek.py --check
 python3 ~/configure_deepseek.py
 ```
 
-脚本默认值为 `https://api.deepseek.com` 和 `deepseek-flash`，不代表当前服务器实际选用的模型。可用 `--model 模型标识` 指定账户支持的模型，或用 `--base-url HTTPS基础地址` 指向自己的兼容服务；请先确认地址再输入对应平台的密钥。需要同时切换默认模型时添加 `--scope defaults-and-interviewer`，其他 Agent 已显式配置的模型不受影响。
+`--check` 用占位密钥校验配置格式。正式执行时，终端显示 API 地址、目标模型和切换范围，密钥通过隐藏输入录入。脚本默认值为 `https://api.deepseek.com` 和 `deepseek-flash`。实际选择可由 `--model 模型标识` 和 `--base-url HTTPS基础地址` 指定，检查与正式写入使用相同参数。
 
-脚本先调用学校版本的 `openclaw config validate`，成功后将原配置备份到 `~/.openclaw/offerlab-backups/deepseek-时间戳-随机标识/`，再写入配置。`--check` 使用占位密钥，仅验证配置格式，不验证密钥、网络或模型工具调用。脚本不会重启 Gateway。学校版本为 `2026.5.22`，使用自定义 OpenAI 兼容提供商，无需升级或安装新版插件。
+脚本新增 `personal-deepseek` 提供商和模型白名单，默认只将 `interviewer` 切换到该模型。`--scope defaults-and-interviewer` 会同时切换默认模型，其他显式指定模型的 Agent 仍按各自配置运行。原配置备份到 `~/.openclaw/offerlab-backups/deepseek-时间戳-随机标识/`，含密钥的配置权限为 `600`。脚本使用该学校版本支持的 OpenAI 兼容接口，服务重载由学校平台管理。
 
-切换后在本机运行 `python3 scripts/manage.py gateway-check`，并新建面试验证 Skill 读取和输出。若旧会话固定了原模型，应使用新会话；若服务没有热加载，按学校平台的 supervisord 管理方式重载。不要改本机的 `OPENCLAW_MODEL=openclaw`。
+已有提供商只需更换密钥时，学校终端使用独立的更新选项。该操作保留模型、地址和 Agent 选择，并执行配置校验与备份。
 
-密钥输错或需要更换时，重新上传最新脚本，在学校端执行 `python3 ~/configure_deepseek.py --update-key`，隐藏输入正确的密钥。该选项只更新已有提供商的密钥，仍执行配置校验和备份，不更改模型、API 地址或 Agent 设置。校验成功只代表配置格式正确，需再次运行本机 `scripts/check_gateway.py` 验证真实调用。
+```bash
+python3 ~/configure_deepseek.py --update-key
+```
 
-使用本次更新后的 `install_interviewer.py` 再次安装时，会保留 interviewer 已选择的模型及 fallback 设置；更新工作区前应重新打包上传，旧安装包仍可能覆盖模型选择。已有 `personal-deepseek` 时首次接入模式拒绝覆盖，请使用 `--update-key` 更换密钥，其他设置基于服务器现有配置调整。
+换模型或换密钥后的验收使用本机 `python3 scripts/manage.py gateway-check` 和新建面试，分别确认基础连通性、实际模型、Skill 读取与报告输出。
 
-## 本地副本准备命令
+## 路由恢复与本机副本
 
-以下命令仅用于修改本机的云端副本，供查看差异：
+清空本机 `.env` 的 `OPENCLAW_AGENT_ID` 并重启后端，应用即恢复默认 Agent 路由。学校端的配置恢复涉及安装摘要指定的备份。备份保存的是当时的完整配置，恢复范围取决于备份后学校端又做过哪些修改。
+
+本机也可以在已有学校状态副本上生成配置差异。执行位置为本机项目根目录。
 
 ```bash
 python3 openclaw/install_interviewer.py \
@@ -125,4 +117,4 @@ python3 openclaw/install_interviewer.py \
   --remote-root /home/idekube/.openclaw
 ```
 
-此模式不会运行 OpenClaw 校验。写入副本配置的路径仍是学校绝对路径，不应用来在本机启动第二套 OpenClaw。
+该模式只写入本机副本，配置中的绝对路径仍指向学校用户目录。实际配置校验和正式安装由学校实例完成。

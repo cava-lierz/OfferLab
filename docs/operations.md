@@ -1,126 +1,74 @@
-# 本机运行与排查
+# 本机运行与运维说明
 
-本文是日常操作的入口；学校端安装与模型配置见 [部署说明](../openclaw/DEPLOYMENT.md)，代码结构见 [架构约定](architecture.md)。以下命令在项目根目录运行。
+我把前后端和面试数据库放在本机，保留两种运行配置。课程演示使用本地题库即可完成问答和复盘。真实模型模式在同一套页面上运行，通过学校 Gateway 生成问题与反馈。
 
-## 命令速查
+## 本机启动
 
-统一入口为 `python3 scripts/manage.py <命令>`，用 `--help` 或 `<命令> --help` 查看说明。入口只负责调度现有脚本，切换到项目根目录并保留退出码和 Ctrl+C 行为；也可从任意目录使用脚本的绝对路径。
-
-| 命令 | 执行位置与作用 | 底层脚本 / 产物 |
-| --- | --- | --- |
-| `setup` | 本机：安装依赖，缺少时创建 `.env` | `scripts/setup.sh` |
-| `dev [--reload]` | 同时启动前后端，缺依赖时自动安装；开发时加 `--reload` | `scripts/dev.sh` |
-| `check` | 本机：后端测试、前端测试及构建，不调用模型 | `scripts/check.sh`；`frontend/dist/` |
-| `tunnel` | 本机：保持 SSH 隧道前台运行 | SSH 别名 `openclaw`；本机 18790 → 学校 18789 |
-| `gateway-config` | 本机：隐藏输入 Token，切到真实模式 | `scripts/configure_gateway.py`；私有 `.env` |
-| `gateway-check` | 本机：健康检查及一次真实模型调用 | `scripts/check_gateway.py`；`data/gateway-check.json` |
-| `runs` | 本机：通过 SSH 只读获取学校运行摘要 | `scripts/inspect_openclaw_runs.py --ssh`；`data/openclaw-runs.json` |
-| `package` | 本机：生成部署包，不上传 | `scripts/package_interviewer.py`；`data/offerlab-interviewer.tar.gz` |
-
-学校端专用脚本：`openclaw/install_interviewer.py` 安装或更新 Agent，`scripts/configure_deepseek.py` 配置个人模型或更新密钥。二者保持可单独上传、仅依赖 Python 标准库，具体参数见部署说明。`inspect_openclaw_runs.py` 不加 `--ssh` 时读取执行机器的 `~/.openclaw`，不要把本机空结果当作学校状态。
-
-## 日常启动
-
-演示模式执行 `python3 scripts/manage.py dev`。已经接通学校 Gateway 的环境先在一个终端运行 `python3 scripts/manage.py tunnel`，再在项目终端运行 `python3 scripts/manage.py dev`。打开 `http://127.0.0.1:5173`，接口文档在 `http://127.0.0.1:8000/docs`。在应用终端按 Ctrl+C 同时停止前后端。
-
-## 运行模式与配置
-
-后端读取项目根目录的 `.env`。配置示例见 [.env.example](../.env.example)，修改后需要重启后端。
-
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `OFFERLAB_MODE` | `demo` | `demo` 为演示模式，`openclaw` 为真实模型模式 |
-| `OPENCLAW_BASE_URL` | `http://127.0.0.1:18790` | 后端访问 Gateway 的基础地址 |
-| `OPENCLAW_TOKEN` | 空 | Gateway 认证 Token，仅保存在后端私有配置中 |
-| `OPENCLAW_MODEL` | `openclaw` | Gateway 兼容接口的入口标识；实际模型由学校 Agent 配置决定 |
-| `OPENCLAW_AGENT_ID` | 空 | 留空使用默认 Agent；云端安装后设为 `interviewer` |
-| `OPENCLAW_TIMEOUT` | `120` | 计划与追问请求总时限，限制在 5–150 秒 |
-| `OPENCLAW_REPORT_TIMEOUT` | `300` | 复盘请求总时限，限制在 30–600 秒；排队时间另计 |
-| `OFFERLAB_DATA_DIR` | `data` | 数据目录；相对路径以项目根目录为基准 |
-
-### 演示模式
-
-演示模式使用本地固定题库和规则，适合界面开发、流程调试和演示备份，不需要 Token 或 SSH 隧道。
-
-前端点击「使用示例体验」可以填入虚构简历与 JD。演示复盘展示报告结构和回答引文，不进行能力评分，也不代表实时模型评价。
-
-### OpenClaw 模式
-
-真实模式通过学校 Gateway 生成问题和反馈。每场面试固定使用创建时的模式；切换配置后需要新建面试，已有演示记录不会变成真实模型记录。真实调用失败会显示错误，不会自动替换为演示回复。
-
-接入步骤如下。
-
-**1. 建立 SSH 隧道**
-
-本地 SSH 配置需要已有可用的 `openclaw` 主机别名。在单独终端运行：
-
-```bash
-python3 scripts/manage.py tunnel
-```
-
-保持该终端运行。如果隧道已经在线，无需重复启动。
-
-**2. 配置 Gateway Token**
-
-```bash
-python3 scripts/manage.py gateway-config
-```
-
-脚本以隐藏输入方式读取 Token，写入权限为 `600` 的 `.env`，同时将模式设为 `openclaw`。这里使用的是 **Gateway Token**；模型 API Key 继续由学校 OpenClaw 管理。
-
-Token 不应提交到仓库，也不能放在前端 `VITE_*` 环境变量中。
-
-**3. 检查真实模型连接**
-
-```bash
-python3 scripts/manage.py gateway-check
-```
-
-脚本检查健康接口并发起一次完整模型请求，将脱敏结果写入 `data/gateway-check.json`。`completion_present: true` 表示本次完整调用成功；健康接口成功本身不代表模型调用成功。检查结果不包含 Token 或模型响应正文。
-
-**4. 重启项目并新建面试**
+项目依赖 Bash、Python 3.11+（含 venv 和 pip）、Node.js 22.12+ 及 npm。前后端通过项目根目录的同一条命令启动。
 
 ```bash
 python3 scripts/manage.py dev
 ```
 
-确认前端标记为「OpenClaw 模式」，再走完计划、回答、追问和报告流程，验证真实模型输出符合应用约定。
+脚本在依赖缺失时安装依赖，在缺少 `.env` 时按模板创建演示配置。首次安装需要访问包源。前端运行在 5173 端口，FastAPI 运行在 8000 端口。页面内置「使用示例体验」入口，可填入虚构简历与 JD。启动终端收到 Ctrl+C 后同时停止两个服务。[面试页面](http://127.0.0.1:5173) · [API 文档](http://127.0.0.1:8000/docs)
 
-当前适配沿用学校已验证的 OpenClaw `2026.5.22` 接口：`model: "openclaw"`、`stream: false` 和 `/v1/chat/completions`。默认 Agent 路径继续将本地 `openclaw/skills/` 中的规则作为系统提示发送。
+## 学校模型接入
 
-## 面试记录与运行数据
+学校 Gateway 只监听容器的回环地址。本机使用已有的 SSH 别名 `openclaw` 做端口转发。隧道与应用分别占用一个终端，已有的同一条隧道可以复用。
 
-- 在“历史记录 → 最近的面试”找到目标场次。点击“删除”后可以取消，点击“确认删除”会移除本机的材料、问答、报告和分题复盘，并清理当前浏览器里该场的草稿。学校 Gateway 的会话由学校单独管理。
-- 生成期间可离开页面或刷新。排队任务由后端继续处理。服务中断后，已保存的面试可在原记录重试。已删除场次的后台结果会被丢弃。
-- 默认数据库为 `data/offerlab.sqlite3`；简历原文件仅用于解析。答题草稿保存在当前浏览器，提交成功后清除。未提交的准备材料只在当前页面内存中。
-- 私有配置在 `.env`，模型和搜索提供商的密钥在学校端。依赖目录为 `.venv/`、`frontend/node_modules/`；下载缓存在 `.cache/`。安装脚本优先使用 `frontend/package-lock.json` 和 `npm ci`。
+| 环节 | 执行位置与命令 | 结果 |
+| --- | --- | --- |
+| 建立隧道 | 本机终端一，`python3 scripts/manage.py tunnel` | 将本机 `127.0.0.1:18790` 转发到学校 `127.0.0.1:18789`，终端在使用期间保持运行。 |
+| 配置认证 | 本机终端二，`python3 scripts/manage.py gateway-config` | 隐藏输入 Gateway Token，脚本写入权限为 `600` 的 `.env` 并将模式设为 `openclaw`。模型提供商的 API Key 由学校保管。 |
+| 指定 Agent | 本机 `.env`，`OPENCLAW_AGENT_ID=interviewer` | 目标为学校已安装的专用面试官，留空时使用默认 Agent。[学校 Agent 部署](../openclaw/DEPLOYMENT.md) |
+| 验证连接 | 本机终端二，`python3 scripts/manage.py gateway-check` | 先探测健康接口，再发起一次模型调用。`data/gateway-check.json` 中的 `completion_present: true` 表示收到了模型回复。 |
+| 加载配置 | 本机应用终端，停止已有进程后运行 `python3 scripts/manage.py dev` | 页面显示「OpenClaw 模式」，新面试采用学校模型。切回演示时，`OFFERLAB_MODE=demo` 同样在重启后对新场次生效。 |
 
-## 常见问题
+Gateway Token 只在后端使用。Vite 的 `VITE_*` 变量会进入浏览器，因此前端配置只承载公开信息。
 
-**首次安装提示缺少 `venv` 或 `ensurepip`**
+## 环境变量
 
-为当前 Python 安装对应的虚拟环境支持。Ubuntu 通常使用 `python3-venv`，安装后重新执行 `python3 scripts/manage.py setup`。
+后端启动时加载根目录的 `.env`。项目随附的模板列出了下面的默认值。[配置模板](../.env.example)
 
-**前端可以打开，但接口请求失败**
+| 配置项 | 默认值 | 用途 |
+| --- | --- | --- |
+| `OFFERLAB_MODE` | `demo` | 决定新面试采用本地规则或学校模型 |
+| `OPENCLAW_BASE_URL` | `http://127.0.0.1:18790` | 后端到隧道的入口 |
+| `OPENCLAW_TOKEN` | 空 | Gateway 用它认证本机后端 |
+| `OPENCLAW_MODEL` | `openclaw` | 学校兼容接口接受的模型入口名，具体提供商在学校配置 |
+| `OPENCLAW_AGENT_ID` | 空 | 安装专用面试官后填 `interviewer` |
+| `OPENCLAW_TIMEOUT` | `120` 秒 | 计划和追问的请求总时限，范围 5–150 秒 |
+| `OPENCLAW_REPORT_TIMEOUT` | `300` 秒 | 复盘请求总时限，范围 30–600 秒，排队另计 |
+| `OFFERLAB_DATA_DIR` | `data` | 面试数据库目录，相对路径从项目根目录算起 |
 
-检查后端启动终端是否报错，访问 `http://127.0.0.1:8000/api/health`。默认前端代理目标是端口 `8000`；修改后端端口时，需要同步调整 `frontend/vite.config.ts`。
+## 练习记录与草稿
 
-**启动提示端口被占用**
+准备页尚未提交的材料保存在页面内存中。简历文件只用于提取文本，候选人可在创建面试前核对解析结果。创建后，简历文本、问答和报告写入本机 SQLite，默认路径为 `data/offerlab.sqlite3`。答题草稿保存在当前浏览器，刷新后能恢复，后端确认收到回答后才清除。
 
-检查是否已经运行一键启动脚本或独立开发服务。停止原有进程后再启动，避免同时运行两套前后端。
+生成任务也存入数据库，关闭页面后仍可从历史记录恢复进度。模型报错时，原场次保留已提交的回答并提供重试入口。历史页确认删除单场练习后，系统清除本机的面试、关联分题复盘及当前浏览器的对应草稿，迟到的生成结果也会被丢弃。学校 Gateway 的会话由学校单独管理。
 
-**切换模式后仍然显示演示记录**
+## 常见故障与诊断依据
 
-修改 `.env` 后重启后端，再创建新面试。历史记录保留各自创建时的模式。
+| 现象 | 诊断与处理 |
+| --- | --- |
+| 安装报缺少 `venv` 或 `ensurepip` | 安装当前 Python 对应的虚拟环境支持（Ubuntu 通常为 `python3-venv`），再运行 `python3 scripts/manage.py setup`。 |
+| 启动时报端口占用 | 通常是已有开发服务占用了端口。可复用原进程，或停止后重新启动。 |
+| 页面能打开，提交失败 | 访问 [本机健康接口](http://127.0.0.1:8000/api/health)，查看后端终端。若改过 API 端口，同时核对 `frontend/vite.config.ts` 的代理目标。 |
+| 健康接口可用，真实调用失败 | 确认隧道在线，再跑 `gateway-check`。健康探测和模型调用分别计时，认证失败时核对 Gateway Token。 |
+| 最小调用成功，计划或报告生成超时 | 后端终端的 `OpenClaw start/end` 会记录任务、结果和耗时。运行 `python3 scripts/manage.py runs`，核对学校端实际的 Agent、模型、工具调用和中止位置，再回原场重试。[验证记录](verification.md) |
+| 简历提取失败 | TXT 使用 UTF-8。PDF 需为未加密、最多 20 页的文本型文件，上传上限 5 MB。扫描件可先做 OCR，或直接粘贴 20–20000 字简历文本。 |
 
-**OpenClaw 连接失败或请求超时**
+## 命令速查
 
-确认隧道终端仍在运行、Token 已配置，并执行接入检查脚本。模型失败后，已提交回答仍会保留，可以在面试页面重试。
+所有命令共用 `python3 scripts/manage.py <命令>`。加 `--help` 可查看帮助。从项目外也可使用脚本的绝对路径，入口会自行切回项目根目录。
 
-检查脚本会分别显示健康检查和最小模型调用阶段，并记录耗时。若最小调用成功但面试计划超时，需继续排查完整计划请求，不能直接认定为 Token 或隧道故障。前端等待时只显示加载图标；后端终端输出 `OpenClaw start/end`、任务类型和耗时，不记录 Token、简历或模型响应正文。
-
-**PDF 无法提取文本**
-
-首版仅支持未加密的文本型 PDF，最多 20 页、5 MB。扫描件需要先进行 OCR，或直接粘贴简历文本。
-
-最小模型调用成功但面试仍失败时，执行 `python3 scripts/manage.py runs` 查看实际 Agent、模型、工具调用与中止记录。该命令不发起新模型请求。完整验收步骤见 [验证记录](verification.md)。
+| 命令 | 作用与产物 |
+| --- | --- |
+| `setup` | 安装依赖到 `.venv/` 和 `frontend/node_modules/`，下载缓存位于 `.cache/`。前端优先使用锁文件和 `npm ci`。 |
+| `dev [--reload]` | 同时启动前后端，修改后端代码时可用 `--reload` 自动重载。 |
+| `check` | 运行后端、前端测试与生产构建，静态文件在 `frontend/dist/`。 |
+| `tunnel` | 在前台保持 SSH 转发，Ctrl+C 关闭该隧道。 |
+| `gateway-config` | 在本机交互终端录入 Token，更新私有 `.env`。 |
+| `gateway-check` | 发起一次真实模型请求，将脱敏结果写入 `data/gateway-check.json`。 |
+| `runs` | 经 SSH 读取已有运行记录，将脱敏摘要写入 `data/openclaw-runs.json`。底层 `scripts/inspect_openclaw_runs.py` 单独执行时需加 `--ssh` 才读取学校记录。 |
+| `package` | 在本机生成 `data/offerlab-interviewer.tar.gz`，供单独上传部署。 |

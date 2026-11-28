@@ -1,66 +1,55 @@
-# 开发与检查
+# 开发环境与代码组织
 
-环境：Bash、Python 3.11+（含 venv/pip）、Node.js 22.12+ 和 npm。首次依赖安装需要访问包源。所有命令在项目根目录运行。
+我把面试流程的控制放在后端。以追问为例，模型根据刚提交的回答决定是否需要补充信息，后端检查本题已经追问了几次，前端负责显示当前问题。修改提示词能调整面试官关注的内容，每道主问题的次数限制则由同一套后端规则执行。
 
-## 开发启动
+## 源码职责
+
+| 模块 | 主要文件 | 职责 |
+| --- | --- | --- |
+| 页面与答题 | `frontend/src/App.tsx`、`pages/InterviewPage.tsx`、`components/AnswerComposer.tsx` | 导航与历史概要、当前问题、答题输入与提交。样式在 `styles.css` 和 `generation.css`。 |
+| 草稿与页面状态 | `frontend/src/drafts.ts`、`hooks.ts`、`session.ts` | 保存未提交文字，轮询后台进度，按版本合并响应，避免旧查询覆盖新回答。 |
+| 接口与流程控制 | `backend/app/main.py`、`engine.py` | 校验请求字段，检查题目 ID 和追问次数，推进面试状态并生成 Markdown 导出。 |
+| 后台执行与存储 | `backend/app/jobs.py`、`store.py` | 领取任务、写入 SQLite、处理并发和重启恢复。 |
+| 模型输入与输出 | `backend/app/provider.py`、`validation.py` | 构造各阶段的模型请求，校验题目、决策、备课来源、评分和引文。前端对应的数据类型在 `frontend/src/types.ts`。 |
+
+演示题库保存在 `openclaw/knowledge/general.json`。默认 Agent 使用本机后端随请求发送的规则，源码在 `openclaw/skills/interviewer/SKILL.md`。学校专用 Agent 从自己的工作区读取 `AGENTS.md`、Skill 和参考资料，对应源码在 `openclaw/interviewer/`。专用面试官的规则更新需要重新打包部署，学校工作区才会加载新版本。[学校 Agent 部署](../openclaw/DEPLOYMENT.md) · [架构与接口约定](architecture.md)
+
+## 开发环境
+
+开发环境使用 Bash、Python 3.11+（含 venv 和 pip）、Node.js 22.12+ 及 npm。首次安装需要访问包源。开发服务从项目根目录启动。
 
 ```bash
 python3 scripts/manage.py dev --reload
 ```
 
-此命令统一启动 FastAPI 和 Vite，同时启用前后端热更新。开发页面在 `http://127.0.0.1:5173`，API 在 `http://127.0.0.1:8000`，Ctrl+C 结束两个服务。普通启动和学校 SSH 隧道见[本机操作手册](operations.md)。
+Vite 在 `127.0.0.1:5173` 提供页面热更新，FastAPI 在 `127.0.0.1:8000` 提供 API，`--reload` 使后端能加载修改后的 Python 代码。启动终端收到 Ctrl+C 后同时关闭两个服务。首次缺少配置时使用演示模式，其余情况沿用已有配置。[开发页面](http://127.0.0.1:5173) · [本机接口文档](http://127.0.0.1:8000/docs) · [运行配置](operations.md)
 
-## 测试与构建
+## 本地测试与构建
 
-运行完整检查前可用 `python3 scripts/manage.py setup` 安装依赖。
+依赖安装入口是 `python3 scripts/manage.py setup`，前端优先按 `frontend/package-lock.json` 执行 `npm ci`。完整检查使用项目根目录的统一命令。
 
 ```bash
 python3 scripts/manage.py check
 ```
 
-检查内容包括后端流程、后台任务与 ASGI 接口测试，前端加载图标、题目隐藏、快照版本和草稿测试，以及 TypeScript 类型检查与 Vite 生产构建。接口测试使用进程内传输，不需要学校服务；真实浏览器与 Gateway 验收另行进行。
+Python 测试覆盖追问上限、重复提交、队列恢复、引文校验和 API 返回，也覆盖安装器更新、回滚和打包文件范围。前端测试覆盖题目逐一展示、加载状态、草稿和旧响应处理。随后执行 TypeScript 检查与 Vite 构建，产物在 `frontend/dist/`。运行构建产物需要配套的 FastAPI 服务和同源 `/api` 代理。
 
-也可以分别执行：
+后端测试也有独立入口。
 
 ```bash
-# 后端测试，在项目根目录运行
 .venv/bin/python -m unittest discover -s tests -v
+```
 
-# 前端测试、类型检查与构建
+系统 Python 也可以执行同一条 unittest 命令。第三方依赖缺失时，部分 API 或 PDF 集成测试会跳过，测试摘要会列出跳过情况。前端独立检查在 `frontend/` 下执行。
+
+```bash
 cd frontend
 npm test
 npm run build
 ```
 
-未安装后端依赖时，可通过 `python3 -m unittest discover -s tests -v` 运行不依赖第三方库的核心测试，API/PDF 集成测试会明确跳过。测试覆盖追问上限、重复提交、会话隔离、失败恢复、并发控制和报告引文校验，也覆盖 Agent 路由、安装失败回滚、重复安装、原配置保留和打包文件范围。
-
-前端构建产物位于 `frontend/dist/`。这些静态文件仍需配合 FastAPI 后端和 `/api` 代理使用，不能单独提供完整面试服务。
-
-真实 OpenClaw 连接检查独立于本地测试，使用 `python3 scripts/manage.py gateway-check` 执行。历史测试结果与人工验收步骤见 [验证记录](verification.md)，不能用演示测试代替真实模型验收。
-
-## 修改入口
-
-| 修改内容 | 位置 |
-| --- | --- |
-| 页面与交互 | `frontend/src/pages/`、`components/`、`styles.css` |
-| 轮询、版本防回退与草稿 | `frontend/src/hooks.ts`、`session.ts`、`drafts.ts` |
-| API 与输入校验 | `backend/app/main.py` |
-| 面试流程、次数限制、导出 | `backend/app/engine.py` |
-| 后台任务、持久化与恢复 | `backend/app/jobs.py`、`store.py` |
-| 模型请求、输出与证据校验 | `backend/app/provider.py`、`validation.py` |
-| 默认 Agent 的系统提示与演示题库 | `openclaw/skills/interviewer/`、`openclaw/knowledge/general.json` |
-| 学校专用 Agent 的规则和参考资料 | `openclaw/interviewer/`（修改前阅读其中 AGENTS.md） |
-| 本机脚本与命令调度 | `scripts/`，命令表见 [运维说明](operations.md) |
-
-两套面试规则分别用于默认 Agent 提示注入和学校专用 Agent 文件读取，仍有运行用途，不能当成冗余文件删除。后端数据结构调整时同步更新 `frontend/src/types.ts` 与相关校验；接口与状态机见 [架构约定](architecture.md)。
-
-前端依赖锁保留在 `frontend/package-lock.json`，安装脚本优先使用 `npm ci`。
+接口测试在进程内驱动 ASGI 应用，前端自动测试使用 Node 和 React 服务端渲染。浏览器操作使用实际页面另行验收，学校工具使用真实场次的运行轨迹验证。`python3 scripts/manage.py gateway-check` 会单独发起一次最小模型请求。[验证记录](verification.md)
 
 ## 文档维护
 
-- README 只维护项目概览、快速启动与文档导航。
-- `docs/operations.md` 维护本机配置、命令、运行数据和排查流程。
-- `openclaw/DEPLOYMENT.md` 维护学校端安装、模型切换与备份；该文件随安装包分发，学校端步骤应可独立阅读。
-- `docs/architecture.md` 维护实现、状态和接口契约。
-- `docs/verification.md` 按日期记录实际验证及尚未覆盖的部分。
-- 早期交接记录只用于追溯，不能作为当前操作指令或继续开发清单。
+项目概览与启动入口在 [README](../README.md)。本机命令及配置归入[运行手册](operations.md)，面试状态和接口字段归入[架构约定](architecture.md)。[部署说明](../openclaw/DEPLOYMENT.md) 随学校安装包分发。[验证记录](verification.md) 按日期保留实际运行的环境和结果，[早期交接](handoff-2026-11-25.md) 保留选题当天的设计背景。
