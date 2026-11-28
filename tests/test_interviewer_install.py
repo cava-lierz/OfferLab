@@ -25,7 +25,7 @@ class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.state = Path(self.temp.name) / '.openclaw'
+        self.state = Path(self.temp.name).resolve() / '.openclaw'
         self.state.mkdir()
         self.remote = Path('/home/idekube/.openclaw')
         self.config = {
@@ -118,14 +118,27 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(self.path.read_text(), updated)
         self.assertFalse((self.state / 'workspace-interviewer').exists())
 
+    def test_config_changed_while_copying_workspace_is_preserved(self):
+        updated = json.dumps(self.config | {'new': 'concurrent-setting'})
+        write = installer.atomic_write
+        def concurrent(path, content, mode=0o600):
+            if path.name == installer.MARKER:
+                self.path.write_text(updated)
+            write(path, content, mode)
+        with patch.object(installer, 'atomic_write', side_effect=concurrent):
+            with self.assertRaisesRegex(ValueError, '配置在安装期间发生变化'):
+                installer.install(self.state, self.remote)
+        self.assertEqual(self.path.read_text(), updated)
+        self.assertFalse((self.state / 'workspace-interviewer').exists())
+
     def test_commit_failure_rolls_back_config_and_new_workspace(self):
         original = self.path.read_bytes()
-        write = installer.atomic_write
-        def fail_config(path, content, mode=0o600):
-            if path == self.path and content != original:
+        replace = installer.os.replace
+        def fail_config(source, destination):
+            if destination == self.path:
                 raise OSError('simulated disk failure')
-            return write(path, content, mode)
-        with patch.object(installer, 'atomic_write', side_effect=fail_config):
+            return replace(source, destination)
+        with patch.object(installer.os, 'replace', side_effect=fail_config):
             with self.assertRaises(OSError):
                 installer.install(self.state, self.remote)
         self.assertEqual(self.path.read_bytes(), original)

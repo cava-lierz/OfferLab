@@ -30,7 +30,8 @@ export function ReportView({ session, onPractice }: {
         <button className="text-button" onClick={() => onPractice({
           role: session.role,
           resume: session.resume,
-          jd: `${session.jd}\n本次希望重点练习：${item.name}。${item.suggestion}`.slice(0, 12000),
+          jd: session.jd,
+          practice_focus: `${item.name}。${item.suggestion}`,
           main_count: 3,
         })}>围绕这一项重新练习</button>
       </section>)}

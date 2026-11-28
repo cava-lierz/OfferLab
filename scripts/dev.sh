@@ -29,4 +29,12 @@ backend_pid=$!
 frontend_pid=$!
 echo 'OfferLab: http://127.0.0.1:5173  |  API: http://127.0.0.1:8000/docs'
 echo '按 Ctrl+C 同时停止前后端。'
-wait -n "$backend_pid" "$frontend_pid"
+# Bash 3.2 (macOS) has no wait -n. Reap the child that exited first.
+while kill -0 "$backend_pid" 2>/dev/null && kill -0 "$frontend_pid" 2>/dev/null; do
+  sleep 0.2
+done
+if ! kill -0 "$backend_pid" 2>/dev/null; then
+  wait "$backend_pid"
+else
+  wait "$frontend_pid"
+fi

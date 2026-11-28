@@ -88,3 +88,33 @@ test('draft survives remount with the same request id, is isolated, and clears o
   assert.equal(readDraft(key).text, '')
   assert.doesNotThrow(() => clearDraft(key))
 })
+
+test('creation retries reuse one ID until the form changes or the server acknowledges it', async () => {
+  const { creationId, clearCreation } = await import('../src/creation')
+  const values = new Map<string, string>()
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  } })
+  try {
+    const form = { role: '开发', resume: '私有简历文本', jd: '', main_count: 1 }
+    const first = await creationId(form)
+    assert.equal(await creationId({ ...form }), first)
+    assert.ok(![...values.values()].join('').includes(form.resume))
+    const edited = { ...form, practice_focus: '个人贡献' }
+    const second = await creationId(edited)
+    assert.notEqual(second, first)
+    clearCreation(first)
+    assert.equal(await creationId(edited), second)
+    clearCreation(second)
+    assert.equal(values.size, 0)
+    const next = await creationId(edited)
+    assert.notEqual(next, second)
+    clearCreation(next)
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'sessionStorage', original)
+    else Reflect.deleteProperty(globalThis, 'sessionStorage')
+  }
+})

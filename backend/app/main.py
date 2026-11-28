@@ -47,6 +47,8 @@ async def handle_error(request, exc):
 
 class CreateInterview(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    request_id: str | None = Field(default=None, min_length=8, max_length=100)
+    practice_focus: str = Field(default='', max_length=4000)
     role: str = Field(min_length=1, max_length=100)
     resume: str = Field(min_length=20, max_length=20000)
     jd: str = Field(default='', max_length=12000)
@@ -89,8 +91,7 @@ def list_interviews():
 
 @app.post('/api/interviews', status_code=201)
 def create_interview(body: CreateInterview):
-    state = engine.create(**body.model_dump(), mode=MODE)
-    return engine.submit(state['id'], 'retry')
+    return engine.create(**body.model_dump(), mode=MODE)
 
 
 @app.get('/api/interviews/{interview_id}')

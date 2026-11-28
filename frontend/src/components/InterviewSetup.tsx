@@ -14,6 +14,7 @@ export function InterviewSetup({ session, busy, onStart, onPrepare }: {
         <PreparationSources research={session.research} />
         <details><summary>查看简历文本</summary><p className="preserve">{session.resume}</p></details>
         <details><summary>查看岗位描述</summary><p className="preserve">{session.jd || '未填写岗位描述'}</p></details>
+        {session.practice_focus && <p className="preserve">本次练习重点：{session.practice_focus}</p>}
         <button className="text-button mt-6" onClick={onPrepare}>修改材料并创建新面试</button>
       </section>
     </div>

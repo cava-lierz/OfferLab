@@ -18,7 +18,7 @@ export type Report = {
   source_note: string
 }
 export type Interview = {
-  id: string; role: string; resume: string; jd: string; main_count: number; mode: 'demo' | 'openclaw'
+  id: string; role: string; resume: string; jd: string; practice_focus?: string; main_count: number; mode: 'demo' | 'openclaw'
   research?: PreparationResearch | null
   status: Status; plan: { topic: string; question: string }[]; current: Question | null
   answers: Answer[]; report: Report | null; error: string | null; created_at: number; updated_at: number
@@ -26,4 +26,4 @@ export type Interview = {
 }
 export type History = Pick<Interview, 'id' | 'role' | 'status' | 'mode' | 'created_at' | 'updated_at' | 'main_count' | 'generation' | 'error' | 'revision'> & { answered: number }
 export type Health = { mode: 'demo' | 'openclaw'; token_configured: boolean; request_timeout_seconds?: number; report_timeout_seconds?: number }
-export type Preparation = { role: string; resume: string; jd: string; main_count: number }
+export type Preparation = { role: string; resume: string; jd: string; practice_focus?: string; main_count: number }

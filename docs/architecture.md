@@ -70,7 +70,7 @@ FastAPI :8000 ⇄ SQLite（面试记录、任务、分题复盘）
 | GET | `/api/health` | 查看本机模式、Agent 目标及 Token 是否配置。实际模型连接用 `gateway-check` 验证。 |
 | POST | `/api/resumes/parse` | 上传 multipart 字段 `file`，取得可在准备页核对的文本。 |
 | GET | `/api/interviews` | 读取历史概要。 |
-| POST | `/api/interviews` | 提交 `{role, resume, jd?, main_count?}`，返回 201 和计划已排队的记录。 |
+| POST | `/api/interviews` | 提交 `{role, resume, jd?, main_count?, practice_focus?, request_id?}`。首次创建时将场次与计划任务一起保存并返回 201。同一标识和相同材料重发会返回已有场次的当前状态。材料冲突返回 409，原场次已删除返回 410。 |
 | GET | `/api/interviews/{id}` | 读取完整面试快照。 |
 | POST | `/api/interviews/{id}/start` | 从备好的计划取出第一题。 |
 | POST | `/api/interviews/{id}/answers` | 提交 `{request_id, question_id, text}`，保存回答并排队处理。 |

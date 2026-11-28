@@ -55,13 +55,13 @@ export default function App() {
 
     <main>
       <header className="topbar"><span>工作台 <span className="slash">/</span> {view === 'prepare' ? '面试准备' : view === 'history' ? '历史记录' : '面试与复盘'}</span>
-        <span className={'mode-pill ' + (health?.mode === 'demo' ? 'demo' : '')}>{health ? health.mode === 'demo' ? '演示模式' : 'OpenClaw 模式' : '服务未连接'}</span>
+        {view === 'prepare' && <span className={'mode-pill ' + (health?.mode === 'demo' ? 'demo' : '')}>{health ? health.mode === 'demo' ? '演示模式' : 'OpenClaw 模式' : '服务未连接'}</span>}
       </header>
       <div className="page-content">
         {historyPoll.error && view === 'history' && <div className="alert error" role="alert"><span>暂时无法更新历史记录。{historyPoll.error}</span><button className="text-button" onClick={historyPoll.refresh}>刷新记录</button></div>}
 
-        {health?.mode === 'demo' && <div className="demo-banner">当前使用本地演示数据，用于体验完整流程；问题与反馈不是实时模型生成。</div>}
-        {health?.mode === 'openclaw' && !health.token_configured && <div className="alert error">Gateway Token 尚未配置，请运行本机配置脚本并重启后端。</div>}
+        {view === 'prepare' && health?.mode === 'demo' && <div className="demo-banner">当前使用本地演示数据，用于体验完整流程；问题与反馈不是实时模型生成。</div>}
+        {view === 'prepare' && health?.mode === 'openclaw' && !health.token_configured && <div className="alert error">Gateway Token 尚未配置，请运行本机配置脚本并重启后端。</div>}
 
         {healthPoll.error && <div className="alert error" role="alert">后端连接暂时不可用，正在重连。<button className="text-button" onClick={healthPoll.refresh}>检查连接</button></div>}
         {view === 'prepare' && <PreparePage health={health} form={form} setForm={setForm} onCreated={state => { historyPoll.refresh(); update(state, true) }} />}

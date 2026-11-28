@@ -115,13 +115,23 @@ def main():
         if args.check:
             print('配置格式校验通过；未保存密钥、未切换模型、未验证 API 连通性。')
             return
-        if path.read_bytes() != before:
-            raise ValueError('配置在准备期间发生变化，请重新运行。')
-        backup_dir = root / 'offerlab-backups' / ('deepseek-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8])
-        backup_dir.mkdir(parents=True, mode=0o700)
-        backup = backup_dir / 'openclaw.json'
-        private_write(backup, before)
-        os.replace(staged, path)
+        # The installer and this standalone server script write the same configuration.
+        lock = root / '.offerlab-install.lock'
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            raise ValueError('其他 OfferLab 配置操作正在进行，请稍后重试。') from None
+        try:
+            os.close(fd)
+            backup_dir = root / 'offerlab-backups' / ('deepseek-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8])
+            backup_dir.mkdir(parents=True, mode=0o700)
+            backup = backup_dir / 'openclaw.json'
+            private_write(backup, before)
+            if path.read_bytes() != before:
+                raise ValueError('配置在准备期间发生变化，请重新运行。')
+            os.replace(staged, path)
+        finally:
+            lock.unlink()
     print('配置已保存（权限 600），原配置备份：' + str(backup))
     print('尚未验证真实模型调用。未自动重启 Gateway；若未热加载，请按学校平台的进程管理方式重载。')
 
