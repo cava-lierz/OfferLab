@@ -23,3 +23,14 @@
 .question-focus { outline: none; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .loading-spinner { animation-duration: 1.6s; } }
+.project-setup { max-width: 860px; }
+.project-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 1rem 0; }
+.project-choice, .project-replay .exchange { border-top: 1px solid #dce6df; padding: .8rem 0; }
+.project-choice label { display: flex; align-items: center; gap: .5rem; }
+.project-choice input[type=checkbox], .project-choice input[type=radio] { width: auto; }
+.project-excerpt { min-width: 0; margin: .5rem 0; }
+.project-excerpt a { overflow-wrap: anywhere; text-decoration: underline; }
+.project-excerpt pre { white-space: pre; overflow-x: auto; padding: .8rem; background: #f4f7f5; border-radius: .5rem; font: .85rem/1.5 monospace; }
+.project-setup select { max-width: 100%; }
+.project-replay { margin: 1rem 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .sidebar nav { flex-wrap: wrap; } }

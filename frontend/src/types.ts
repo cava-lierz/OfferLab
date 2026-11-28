@@ -1,6 +1,8 @@
 export type Status = 'preparing' | 'ready' | 'active' | 'awaiting_next' | 'between_questions' | 'reporting' | 'completed'
 export type Question = { id: string; text: string; topic: string; main_index: number; followup: number }
-export type Answer = { id: string; request_id: string; text: string; question: Question }
+export type Excerpt = { id: string; path: string; start: number; end: number; code: string; url: string }
+export type Project = { id: string; url: string; title: string; sha: string; file_count: number; scanned_files: number; excerpts: Excerpt[] }
+export type Answer = { excerpt_id?: string; id: string; request_id: string; text: string; question: Question }
 export type Generation = {
   id: string; task: 'plan' | 'decision' | 'report'
   status: 'queued' | 'running' | 'completed' | 'failed'
@@ -18,6 +20,7 @@ export type Report = {
   source_note: string
 }
 export type Interview = {
+  project?: Project
   id: string; role: string; resume: string; jd: string; practice_focus?: string; main_count: number; mode: 'demo' | 'openclaw'
   research?: PreparationResearch | null
   status: Status; plan: { topic: string; question: string }[]; current: Question | null

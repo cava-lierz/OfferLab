@@ -1,4 +1,4 @@
-export type Draft = { text: string; request_id: string }
+export type Draft = { text: string; request_id: string; excerpt_id?: string }
 export const draftKey = (interviewId: string, questionId: string) => `offerlab:answer:${interviewId}:${questionId}`
 export function readDraft(key: string): Draft {
   try {

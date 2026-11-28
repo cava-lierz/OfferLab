@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, ConfigDict
 from dotenv import load_dotenv
@@ -10,6 +11,7 @@ from .jobs import JobRunner
 from .engine import Engine, markdown_report
 from .provider import DemoProvider, OpenClawProvider, ROOT
 from .resume import extract_resume, MAX_BYTES
+from .project import import_pr
 
 load_dotenv(ROOT / '.env', interpolate=False)
 MODE = os.getenv('OFFERLAB_MODE', 'demo')
@@ -60,6 +62,33 @@ class Answer(BaseModel):
     request_id: str = Field(min_length=8, max_length=100)
     question_id: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=8000)
+    excerpt_id: str | None = Field(default=None, min_length=1, max_length=12)
+
+
+class ImportProject(BaseModel):
+    url: str = Field(min_length=1, max_length=400)
+
+
+class ProjectInterview(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    claim: str = Field(min_length=5, max_length=800)
+    preview_id: str = Field(pattern=r'^[0-9a-f]{64}$')
+    excerpt_ids: list[str] = Field(min_length=1, max_length=3)
+    request_id: str = Field(min_length=8, max_length=100)
+
+
+@app.post('/api/projects/preview')
+async def preview_project(body: ImportProject):
+    snapshot = await import_pr(body.url)
+    await run_in_threadpool(store.save_preview, snapshot)
+    return snapshot
+
+
+@app.post('/api/projects/interviews', status_code=201)
+def project_interview(body: ProjectInterview):
+    project = store.select_project(body.preview_id, body.excerpt_ids)
+    return engine.create('项目面试 · ' + project['title'][:85], body.claim, main_count=1,
+                         mode=MODE, request_id=body.request_id, project=project)
 
 
 class NextQuestion(BaseModel):

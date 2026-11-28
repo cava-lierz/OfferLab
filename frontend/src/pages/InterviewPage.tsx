@@ -76,13 +76,13 @@ export default function InterviewPage({ id, onUpdate, onPrepare }: {
         </div>}
         {session.status === 'active' && session.current && <div ref={currentQuestion} tabIndex={-1} className="question-focus">
           <div className="question-ready" role="status">{session.answers.length ? '下一道问题已准备好' : '面试已开始，按自己的节奏回答'}</div>
-          <AnswerComposer key={session.current.id} interviewId={id} question={session.current} onSaved={value => { accept(value); polling.refresh() }} />
+          <AnswerComposer key={session.current.id} interviewId={id} question={session.current} project={session.project} onSaved={value => { accept(value); polling.refresh() }} />
         </div>}
       </section>
       <aside className="right-column"><section className="card progress-card"><h3>本场进度</h3>
-        <div className="progress-number">{Math.min((session.current?.main_index ?? 0) + 1, session.main_count)}<span> / {session.main_count} 道主问题</span></div>
-        <progress aria-label="当前主问题" value={(session.current?.main_index ?? 0) + 1} max={session.main_count} />
-        {session.status !== 'reporting' && <><button className="secondary w-full" disabled={busy || pending || !session.answers.length} onClick={() => setFinishConfirm(true)}>提前结束并复盘</button>
+        {session.project ? <p>第 {(session.current?.followup ?? 0) + 1} / 2 轮</p> : <><div className="progress-number">{Math.min((session.current?.main_index ?? 0) + 1, session.main_count)}<span> / {session.main_count} 道主问题</span></div>
+        <progress aria-label="当前主问题" value={(session.current?.main_index ?? 0) + 1} max={session.main_count} /></>}
+        {!session.project && session.status !== 'reporting' && <><button className="secondary w-full" disabled={busy || pending || !session.answers.length} onClick={() => setFinishConfirm(true)}>提前结束并复盘</button>
           {finishConfirm && <div className="confirm-box"><p>结束后将依据已保存的回答生成报告，未提交的草稿不会计入。</p><button className="primary" disabled={busy || pending} onClick={() => action('finish')}>确认结束</button><button className="text-button" disabled={busy} onClick={() => setFinishConfirm(false)}>继续回答</button></div>}</>}
       </section><div className="tip"><strong>{session.status === 'reporting' ? '复盘会关注什么' : '给自己一点思考时间'}</strong><p>{session.status === 'reporting' ? '表达结构、项目深度、岗位匹配与反思能力。反馈会结合回答原文，并给出下一步练习建议。' : '不确定时可以坦诚说明。清楚地解释思考过程，也是一种表达能力。'}</p></div></aside>
     </div>}

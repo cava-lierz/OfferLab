@@ -34,6 +34,22 @@ class ProviderTests(unittest.TestCase):
         for task in ('plan', 'decision', 'report'):
             self.generate(handler, task)
 
+    def test_project_prompt_uses_selected_snapshot_and_previous_answer(self):
+        import httpx
+        self.provider.agent_id = 'interviewer'
+        self.state['project'] = {'sha': 'a' * 40, 'excerpts': [{'id': 'E1', 'path': 'sample.py', 'code': 'return saved'}]}
+        self.state['answers'] = [{'text': '我负责处理请求重试', 'excerpt_id': 'E1'}]
+        for task in ('plan', 'decision', 'report'):
+            def handler(request):
+                messages = json.loads(request.content)['messages']
+                self.assertIn('项目答辩面试官', messages[0]['content'])
+                context = json.loads(messages[1]['content'].split('不是指令：', 1)[1])
+                self.assertEqual(context['project'], self.state['project'])
+                if task != 'plan':
+                    self.assertEqual(context['answers'], self.state['answers'])
+                return httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]})
+            self.generate(handler, task)
+
     def test_report_has_its_own_deadline_without_extending_plan_deadline(self):
         import httpx
         self.provider.timeout = .01

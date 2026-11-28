@@ -23,6 +23,8 @@ class Store:
                 id TEXT PRIMARY KEY, state TEXT NOT NULL,
                 lease TEXT, lease_until REAL NOT NULL DEFAULT 0)""")
             db.execute('CREATE TABLE IF NOT EXISTS workers (id TEXT PRIMARY KEY, heartbeat REAL NOT NULL)')
+            db.execute('''CREATE TABLE IF NOT EXISTS project_previews (
+                id TEXT PRIMARY KEY, snapshot TEXT NOT NULL, expires REAL NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS creation_requests (
                 request_id TEXT PRIMARY KEY, interview_id TEXT NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS question_reviews (
@@ -52,12 +54,31 @@ class Store:
                     if not row:
                         raise AppError('这次创建的面试已删除，请重新创建。', 410)
                     saved = json.loads(row[0])
-                    if any(saved.get(k) != state.get(k) for k in ('role', 'resume', 'jd', 'main_count', 'practice_focus')):
+                    if any(saved.get(k) != state.get(k) for k in ('role', 'resume', 'jd', 'main_count', 'practice_focus', 'project')):
                         raise AppError('相同创建标识对应了不同材料，请重新创建。', 409)
                     return saved
             db.execute("INSERT INTO interviews(id,state) VALUES (?,?)",
                        (state['id'], json.dumps(state, ensure_ascii=False)))
         return state
+
+    def save_preview(self, snapshot):
+        now = time.time()
+        with self.connection() as db:
+            db.execute('DELETE FROM project_previews WHERE expires <= ?', (now,))
+            db.execute('INSERT OR REPLACE INTO project_previews VALUES (?,?,?)',
+                       (snapshot['id'], json.dumps(snapshot, ensure_ascii=False), now + 86400))
+
+    def select_project(self, preview_id, ids):
+        with self.connection() as db:
+            row = db.execute('SELECT snapshot FROM project_previews WHERE id=? AND expires>?',
+                             (preview_id, time.time())).fetchone()
+        if not row:
+            raise AppError('PR 预览已过期，请重新导入。', 410)
+        project = json.loads(row[0])
+        selected = [item for item in project['excerpts'] if item['id'] in ids]
+        if not 1 <= len(selected) <= 3 or len(selected) != len(ids):
+            raise AppError('请选择 1 至 3 个不同的本次 PR 片段。', 422)
+        return {**project, 'excerpts': selected}
 
     def get(self, interview_id):
         with self.connection() as db:
@@ -81,15 +102,21 @@ class Store:
                 for (raw,) in rows for s in [json.loads(raw)]]
 
     @contextmanager
-    def lease(self, interview_id, seconds=180):
+    def lease(self, interview_id, seconds=180, *, queued_only=False):
         owner = str(uuid.uuid4())
         with self.connection() as db:
             result = db.execute("""UPDATE interviews SET lease=?, lease_until=?
-                WHERE id=? AND (lease IS NULL OR lease_until < ?)""",
-                (owner, time.time() + seconds, interview_id, time.time()))
+                WHERE id=? AND (lease IS NULL OR lease_until < ?)
+                AND (NOT ? OR json_extract(state, '$.generation.status')='queued')""",
+                (owner, time.time() + seconds, interview_id, time.time(), queued_only))
             if not result.rowcount:
-                self.get(interview_id)
-                raise AppError('该面试正在处理，请稍后刷新。中断任务的锁会自动释放。', 409)
+                if not queued_only:
+                    self.get(interview_id)
+                    raise AppError('该面试正在处理，请稍后刷新。中断任务的锁会自动释放。', 409)
+                owner = None
+        if owner is None:
+            yield None
+            return
         try:
             yield owner
         finally:
@@ -97,7 +124,7 @@ class Store:
                 db.execute("UPDATE interviews SET lease=NULL, lease_until=0 WHERE id=? AND lease=?",
                            (interview_id, owner))
 
-    def save(self, state, owner, review=None):
+    def save(self, state, owner, review=None, *, release=False):
         state['updated_at'] = time.time()
         state['revision'] = state.get('revision', 0) + 1
         with self.connection() as db:
@@ -105,6 +132,8 @@ class Store:
                                 (json.dumps(state, ensure_ascii=False), state['id'], owner, time.time()))
             if not result.rowcount:
                 raise AppError('处理已过期，请刷新后重试', 409)
+            if release:
+                db.execute('UPDATE interviews SET lease=NULL,lease_until=0 WHERE id=? AND lease=?', (state['id'], owner))
             if review:
                 db.execute('''INSERT OR IGNORE INTO question_reviews
                     (interview_id, main_index, snapshot, timeout_seconds, created_at)

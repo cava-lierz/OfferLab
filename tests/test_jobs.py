@@ -104,14 +104,25 @@ class JobTests(unittest.TestCase):
         self.store.heartbeat('live')
         phases = []
         original = self.store.save
-        def observed(snapshot, owner):
+        def observed(snapshot, owner, **kwargs):
             phases.append(snapshot['generation']['phase'])
-            original(snapshot, owner)
+            original(snapshot, owner, **kwargs)
             self.store.recover_interrupted()
         self.store.save = observed
         ready = self.engine.process_job(state['id'], 'live')
         self.assertEqual(ready['status'], 'ready')
         self.assertEqual(phases, ['generating', 'validating', 'completed'])
+
+    def test_ready_is_actionable_as_soon_as_worker_publishes_it(self):
+        state = self.create()
+        save = self.store.save
+        def observed(snapshot, owner, **kwargs):
+            save(snapshot, owner, **kwargs)
+            if snapshot['status'] == 'ready':
+                self.assertEqual(self.engine.submit(state['id'], 'start')['status'], 'active')
+        self.store.save = observed
+        self.engine.process_job(state['id'], 'worker')
+        self.assertEqual(self.store.get(state['id'])['status'], 'active')
 
     def test_unexpected_provider_failure_is_recoverable_and_sanitized(self):
         class Broken(DemoProvider):

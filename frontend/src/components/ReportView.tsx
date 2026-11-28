@@ -1,4 +1,5 @@
 import { PreparationSources } from './PreparationSources'
+import { ProjectReplay } from './ProjectEvidence'
 import type { Interview, Preparation } from '../types'
 
 export function ReportView({ session, onPractice }: {
@@ -15,6 +16,7 @@ export function ReportView({ session, onPractice }: {
       </div>
       <a className="light-button button-link" href={`/api/interviews/${session.id}/export`}>导出 Markdown 报告</a>
     </div>
+    {session.project && <ProjectReplay session={session} />}
     <div className="report-grid">
       {report.dimensions.map(item => <section className="card dimension" key={item.name}>
         <div className="section-title">
@@ -27,13 +29,13 @@ export function ReportView({ session, onPractice }: {
           <p>“{quote.quote}”</p>
         </blockquote>)}
         <div className="suggestion"><strong>下一步练习</strong><p>{item.suggestion}</p></div>
-        <button className="text-button" onClick={() => onPractice({
+        {!session.project && <button className="text-button" onClick={() => onPractice({
           role: session.role,
           resume: session.resume,
           jd: session.jd,
           practice_focus: `${item.name}。${item.suggestion}`,
           main_count: 3,
-        })}>围绕这一项重新练习</button>
+        })}>围绕这一项重新练习</button>}
       </section>)}
     </div>
     <section className="card mt-6">
