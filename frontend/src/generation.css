@@ -34,3 +34,8 @@
 .project-setup select { max-width: 100%; }
 .project-replay { margin: 1rem 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .sidebar nav { flex-wrap: wrap; } }
+.role-review h3 { margin: 1.2rem 0 .35rem; }
+.role-review textarea { display:block; width:100%; padding:.7rem; border:1px solid #afc4b9; border-radius:.5rem; }
+.review-evidence { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:1rem; margin:1rem 0; }
+.review-evidence > div { background:#f4f7f5; padding:.85rem; border-radius:.5rem; }
+.project-choice textarea { display:block; width:100%; }

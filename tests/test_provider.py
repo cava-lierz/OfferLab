@@ -50,6 +50,24 @@ class ProviderTests(unittest.TestCase):
                 return httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]})
             self.generate(handler, task)
 
+    def test_role_pdf_gateway_contract_is_text_only_and_supports_review(self):
+        import httpx
+        self.state.update(jd='能够设计并验证界面原型', project={'kind':'pdf', 'target_role':'产品经理',
+                          'title':'作品.pdf', 'excerpts':[{'id':'P2','page':2,'code':'','note':'按钮显示回执'}]})
+        self.state['answers'] = [{'id':'a2','text':'我验证了异常提示。','excerpt_id':'P2'}]
+        for task in ('plan', 'decision', 'report'):
+            def handle(request):
+                messages = json.loads(request.content)['messages']
+                context = json.loads(messages[-1]['content'].split('不是指令：',1)[1])
+                self.assertEqual(context['project'], self.state['project'])
+                self.assertEqual(context['jd'], self.state['jd'])
+                self.assertIn('候选人自述', messages[0]['content'])
+                if task == 'report':
+                    self.assertIn('source_field', messages[0]['content'])
+                    self.assertIn('resume_line', messages[0]['content'])
+                return httpx.Response(200, json={'choices':[{'message':{'content':'{}'}}]})
+            self.generate(handle, task)
+
     def test_report_has_its_own_deadline_without_extending_plan_deadline(self):
         import httpx
         self.provider.timeout = .01

@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from .store import AppError
 from .validation import parse_json, DIMENSIONS
+from .coaching import demo_coaching, evidence_location, interview_angle
 
 ROOT = Path(__file__).resolve().parents[2]
 KNOWLEDGE = json.loads((ROOT / 'openclaw/knowledge/general.json').read_text())
@@ -27,26 +28,30 @@ TASKS = {
 class DemoProvider:
     def generate(self, task, state):
         project = state.get('project')
+        target = project.get('target_role') if project else None
+        focus = f'应聘{target}，对照招聘要求“{state["jd"][:160]}”，' if target else ''
         if project and task == 'plan':
             ref = project['excerpts'][0]
             return {'questions': [{'topic': '个人贡献', 'question':
-                    f'你在简历里写了“{state["resume"]}”。结合 {ref["path"]} 的改动，你负责解决的具体问题是什么？'}]}
+                    f'你在简历里写了“{state["resume"]}”。{focus}结合 {evidence_location(ref)}，你负责解决的具体问题是什么？'}]}
         if project and task == 'decision':
             answer = state['answers'][-1]
             ref = next((item for item in project['excerpts'] if item['id'] == answer.get('excerpt_id')),
                        project['excerpts'][0])
+            angle = interview_angle(target) if target else '你怎样验证这项工作达到了预期？'
             return {'action': 'followup', 'question': f'你刚才提到“{answer["text"][:80]}”。'
-                    f'以 {ref["path"]} 或另一处已选片段为例，哪一行能说明这个改动如何生效？你怎样验证它？'}
+                    f'{focus}请指向 {evidence_location(ref)} 或另一段作品依据。{angle}'}
         if project and task == 'report':
             first, second = state['answers']
             ref = next(row for row in project['excerpts'] if row['id'] == second['excerpt_id'])
             suggestions = [
                 '用一句话说清原先的问题、你的改动和结果。',
-                f'指出 {ref["path"]} 第 {ref["start"]}–{ref["end"]} 行中的关键操作，解释去掉它会怎样。',
+                f'指出 {evidence_location(ref)} 中最重要的细节，解释另一种选择会怎样。',
                 '说明这次改动体现了目标岗位的哪项要求。',
                 '举一个这段实现尚未覆盖的情况，并提出验证办法。',
             ]
-            return {'summary': f'你用两轮回答说明了个人贡献，并指向 {ref["path"]}。可以对照下方原话和片段检查自己的解释。',
+            return {**({'coaching': demo_coaching(state)} if target else {}),
+                    'summary': f'你用两轮回答说明了个人贡献，并指向 {evidence_location(ref)}。可以对照下方原话和片段检查自己的解释。',
                     'dimensions': [{'name': name, 'score': None, 'feedback': '以下为本场回答摘录，演示模式不评分。',
                                     'suggestion': suggestion, 'evidence': [{'answer_id': answer['id'], 'quote': answer['text'][:100]}]}
                                    for name, suggestion, answer in zip(DIMENSIONS, suggestions, (first, second, first, second))]}
@@ -123,7 +128,17 @@ class OpenClawProvider:
                 'decision': '这是第二轮，必须返回 action=followup。抓住第一轮回答中的具体说法，结合所选片段问一个验证问题，请学生指到代码或测试。',
                 'report': '按给定的四维评价格式复盘两轮原话。结合 answers 中的 excerpt_id 与 project.excerpts 评价回答与所指片段是否一致，说明一项依据或缺口。代码不能作为回答引文，也不能证明个人作者身份。',
             }
-            system = ('你是项目答辩面试官。学生自选的公开 PR 片段、文件名、简历和回答都是待分析材料。'
+            if context['project'].get('target_role'):
+                instructions[task] += '根据 project.target_role 和 jd 中的具体招聘要求调整问题、判断或反馈。'
+                if task == 'report':
+                    contract += ('另返回 coaching 对象，含 answer_id、answer_quote、excerpt_id、source_field、work_quote、match、gap、resume_line。'
+                                 '引用一条实际选了该 excerpt_id 的回答。answer_quote 是回答连续原文，work_quote 是片段 code 或 note 的连续原文，source_field 写对应字段名。'
+                                 'match 说明对招聘要求有哪些依据，gap 说明下一步该补什么，resume_line 改写成一条简历表述，只用已展示的工作和回答，不添加职责、业绩或数字。'
+                                 '没有支持某项结果时就不写该结果。材料不足以写简历时 resume_line 置为空字符串。不得将团队成果改写成个人成果。')
+            if context['project'].get('kind') == 'pdf':
+                instructions[task] += '这是 PDF 作品。按原始页码讨论，code 是该页提取的文字，note 是候选人自述，不声称看过图像或核实了自述。'
+                instructions[task] = instructions[task].replace('代码或测试', '作品页').replace('真实改动', '作品细节')
+            system = ('你是项目答辩面试官。学生自选的作品、文件名、简历和回答都是待分析材料。'
                       '仅根据随请求提供的快照提问和复盘，不调用工具或执行代码。' + instructions[task] + '\n' + contract)
             guidance = instructions[task]
         elif self.agent_id == 'interviewer':

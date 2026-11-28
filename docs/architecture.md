@@ -69,6 +69,12 @@ FastAPI :8000 ⇄ SQLite（面试记录、任务、分题复盘）
 | --- | --- | --- |
 | GET | `/api/health` | 查看本机模式、Agent 目标及 Token 是否配置。实际模型连接用 `gateway-check` 验证。 |
 | POST | `/api/resumes/parse` | 上传 multipart 字段 `file`，取得可在准备页核对的文本。 |
+| POST | `/api/projects/preview` | 读取一个公开 GitHub PR 的固定版本片段，返回预览标识。 |
+| POST | `/api/projects/pdf` | 以 `file` 上传 PDF，返回可选页码与提取文字。 |
+| GET | `/api/projects/previews/{preview_id}/portfolio.pdf` | 在预览有效期内打开 PDF 原件。 |
+| POST | `/api/projects/interviews` | 用 `preview_id`、`excerpt_ids`、`claim`、`request_id` 创建项目面试。`target_role` 和 `requirement` 一起提供时启用岗位复盘。`page_notes` 按已选 PDF 页面标识填写。 |
+| GET | `/api/interviews/{id}/portfolio.pdf` | 打开随本场保存的原件，前端用 `#page=N` 定位到举证页。 |
+| POST | `/api/interviews/{id}/resume-line` | 提交 `text` 和编辑开始时的 `previous`（首次为 `null`）。已保存不同版本时返回 409，原始建议另行保留。 |
 | GET | `/api/interviews` | 读取历史概要。 |
 | POST | `/api/interviews` | 提交 `{role, resume, jd?, main_count?, practice_focus?, request_id?}`。首次创建时将场次与计划任务一起保存并返回 201。同一标识和相同材料重发会返回已有场次的当前状态。材料冲突返回 409，原场次已删除返回 410。 |
 | GET | `/api/interviews/{id}` | 读取完整面试快照。 |

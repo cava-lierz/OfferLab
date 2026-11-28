@@ -128,3 +128,10 @@ test('project replay binds the saved answer to its selected source and escapes c
   for (const value of [session.resume, item.path, item.url, '我的具体解释', '&lt;demo&gt;']) assert.ok(html.includes(value))
   assert.ok(!html.includes('<demo>'))
 })
+
+test('PDF evidence uses page anchors and visibly distinguishes the user note from source text', async () => {
+  const { ProjectExcerpt } = await import('../src/components/ProjectEvidence')
+  const html = renderToStaticMarkup(<ProjectExcerpt item={{ id: 'P2', path: '原型.pdf', page: 2, code: '', note: '<draft>' }} pdfUrl="/api/interviews/test/portfolio.pdf" />)
+  for (const expected of ['portfolio.pdf#page=2', '第 2 页', '我的页面说明', '&lt;draft&gt;']) assert.ok(html.includes(expected))
+  assert.ok(!html.includes('Lundefined'))
+})

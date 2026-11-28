@@ -1,12 +1,12 @@
-import type { Preparation } from './types'
+import type { Preparation, ProjectForm } from './types'
 
 type Attempt = { digest: string; id: string }
 const key = 'offerlab:pending-create'
 let pending: Attempt | null = null
 
 // Keep only a fingerprint and the retry ID in this tab, including across reloads.
-export async function creationId(form: Preparation | { claim: string; preview_id: string; excerpt_ids: string[] }): Promise<string> {
-  const fields = 'preview_id' in form ? ['project', form.claim, form.preview_id, form.excerpt_ids] : [form.role, form.resume, form.jd, form.main_count, form.practice_focus || '']
+export async function creationId(form: Preparation | ProjectForm): Promise<string> {
+  const fields = 'preview_id' in form ? ['project', form.claim, form.preview_id, form.excerpt_ids, form.target_role, form.requirement, form.page_notes] : [form.role, form.resume, form.jd, form.main_count, form.practice_focus || '']
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(fields)))
   const digest = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')
   try {
