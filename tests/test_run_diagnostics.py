@@ -47,6 +47,18 @@ class RunDiagnosticTests(unittest.TestCase):
             self.assertEqual(run['events'][1]['elapsed_seconds'], 20.08)
             self.assertEqual(run['events'][2]['error_kind'], 'aborted')
 
+    def test_search_results_expose_counts_and_soft_failures_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            trace = Path(temporary) / 'run.jsonl'
+            results = [{'results': [{'url': 'PRIVATE_URL'}]}, {'error': 'PRIVATE_ERROR'}]
+            trace.write_text('\n'.join(json.dumps({'message': {'role': 'toolResult', 'toolName': 'web_search',
+                'isError': False, 'content': json.dumps(result)}}) for result in results))
+            events = diagnostics.trace_summary(trace)['events']
+            self.assertEqual(events[0]['result_count'], 1)
+            self.assertFalse(events[0]['is_error'])
+            self.assertTrue(events[1]['is_error'])
+            self.assertNotIn('PRIVATE', json.dumps(events))
+
     def test_missing_trace_does_not_claim_successful_tool_usage(self):
         with tempfile.TemporaryDirectory() as temporary:
             self.assertEqual(diagnostics.trace_summary(Path(temporary) / 'missing.jsonl'), {'trace_found': False})

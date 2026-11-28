@@ -51,6 +51,12 @@ class Store:
             raise AppError('面试记录不存在', 404)
         return json.loads(row[0])
 
+    def delete(self, interview_id):
+        # One transaction fences in-flight workers: their saves only UPDATE existing rows.
+        with self.connection() as db:
+            db.execute('DELETE FROM interviews WHERE id=?', (interview_id,))
+            db.execute('DELETE FROM question_reviews WHERE interview_id=?', (interview_id,))
+
     def list(self):
         with self.connection() as db:
             rows = db.execute("SELECT state FROM interviews ORDER BY rowid DESC LIMIT 100").fetchall()

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { usePolling, useRoute } from './hooks'
-import { mergeHistory } from './session'
+import { clearInterviewDrafts } from './drafts'
+import { deleteInterview } from './api'
+import { mergeHistory, newest } from './session'
 import PreparePage from './pages/PreparePage'
 import HistoryPage from './pages/HistoryPage'
 import InterviewPage from './pages/InterviewPage'
@@ -18,13 +20,25 @@ export default function App() {
   const view = route === 'history' ? 'history' : sessionId ? 'interview' : 'prepare'
   const healthPoll = usePolling<Health>('/health', setHealth, 30_000)
   const historyPoll = usePolling<History[]>('/interviews', items => {
-    setHistory(previous => mergeHistory(previous, items))
+    setHistory(previous => {
+      const known = new Map(previous.map(item => [item.id, item]))
+      return items.map(item => newest(known.get(item.id) ?? null, item))
+    })
   }, 5000)
   useEffect(() => { historyPoll.refresh() }, [route])
-  function update(state: Interview) {
+  function update(state: Interview, created = false) {
     const { id, role, status, mode, created_at, updated_at, main_count, generation, error, revision } = state
     const summary: History = { id, role, status, mode, created_at, updated_at, main_count, generation, error, revision, answered: state.answers.length }
-    setHistory(previous => mergeHistory(previous, [summary]))
+    setHistory(previous => {
+      if (!created && !previous.some(item => item.id === state.id)) return previous
+      return mergeHistory(previous, [summary])
+    })
+  }
+  async function remove(id: string) {
+    await deleteInterview(id)
+    clearInterviewDrafts(id)
+    historyPoll.refresh()
+    setHistory(previous => previous.filter(item => item.id !== id))
   }
   return <div className="app-shell">
     <aside className="sidebar">
@@ -50,8 +64,8 @@ export default function App() {
         {health?.mode === 'openclaw' && !health.token_configured && <div className="alert error">Gateway Token 尚未配置，请运行本机配置脚本并重启后端。</div>}
 
         {healthPoll.error && <div className="alert error" role="alert">后端连接暂时不可用，正在重连。<button className="text-button" onClick={healthPoll.refresh}>检查连接</button></div>}
-        {view === 'prepare' && <PreparePage health={health} form={form} setForm={setForm} onCreated={update} />}
-        {view === 'history' && <HistoryPage history={history} loaded={historyPoll.loaded} />}
+        {view === 'prepare' && <PreparePage health={health} form={form} setForm={setForm} onCreated={state => { historyPoll.refresh(); update(state, true) }} />}
+        {view === 'history' && <HistoryPage history={history} loaded={historyPoll.loaded} onDelete={remove} />}
         {sessionId && <InterviewPage key={sessionId} id={sessionId} onUpdate={update} onPrepare={value => { setForm(value); window.location.hash = 'prepare' }} />}
         <footer className="page-footer">OfferLab <span>把经历说清楚，把下一步想明白。</span></footer>
       </div>

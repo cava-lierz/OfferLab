@@ -68,11 +68,11 @@ FastAPI lifespan 启动每进程 2 个前台任务 Worker、1 个分题复盘 Wo
 - `report`：固定四维，分数为 0–100 的整数或 null；有分数必须有证据。
 - 证据的 `answer_id` 必须存在，`quote` 必须是对应回答的连续原文；任一不符则整份报告拒绝保存并允许重试。这保证引用匹配，不保证评价一定合理。
 - 演示报告只展示结构与真实回答引文，分数始终为 null。
-- 无检索集成时，后端固定来源数组为空，并注明未查证外部资料。
+- 专用面试官可在计划内返回考查依据及 research（状态、来源标题、URL）。应用校验结构和链接并保存，备课来源在准备页、报告和导出中可见。旧计划缺少这些字段时仍可继续。检索调用的独立证据来自学校会话轨迹。
 
-默认路径将本地 Skill 与题库作为系统提示发送。专用路径通过 `OPENCLAW_AGENT_ID=interviewer` 和 `x-openclaw-agent-id` 请求头路由，使用学校工作区内的 Skill 与参考资料，允许 Agent 调用 `read`；不再向该路径注入原先“禁止读取文件”的提示。两条路径都把简历、JD、回答作为资料 JSON 传递，后端继续验证流程和证据。
+默认路径将本地 Skill 与题库作为系统提示发送。专用路径通过 `OPENCLAW_AGENT_ID=interviewer` 和 `x-openclaw-agent-id` 请求头路由，使用学校工作区内的 Skill 与参考资料，允许 Agent 调用 `read`、`web_search` 和 `web_fetch`；不再向该路径注入原先“禁止读取文件”的提示。两条路径都把简历、JD、回答作为资料 JSON 传递，后端继续验证流程和证据。
 
-已复制的学校配置显示全局工具为 coding profile，并附加多种飞书工具；原 main 工作区有多种课程与办公 Skill。新面试官的配置使用独立工作区、Skill 白名单、仅 read 的工具白名单，以及工作区文件访问范围。源文件和安装步骤见 [部署说明](../openclaw/DEPLOYMENT.md)。学校端已完成安装、原版本配置校验与 CLI 加载确认；脱敏运行诊断已确认 interviewer 路由和 Skill / rubric 的 read 调用。2026-11-26 开发者确认已切到个人 DeepSeek；更新安装器保留 Agent 已选模型。完整真实报告仍需验收，按日期的证据见 [验证记录](verification.md)。
+已复制的学校配置显示全局工具为 coding profile，并附加多种飞书工具；原 main 工作区有多种课程与办公 Skill。新面试官的配置使用独立工作区、Skill 白名单、面试工具白名单，以及工作区文件访问范围。源文件和安装步骤见 [部署说明](../openclaw/DEPLOYMENT.md)。学校端已完成安装、原版本配置校验与 CLI 加载确认；脱敏运行诊断已确认 interviewer 路由和 Skill / rubric 的 read 调用。2026-11-26 开发者确认已切到个人 DeepSeek；更新安装器保留 Agent 已选模型。完整真实报告仍需验收，按日期的证据见 [验证记录](verification.md)。
 
 ## API
 
@@ -83,6 +83,7 @@ FastAPI lifespan 启动每进程 2 个前台任务 Worker、1 个分题复盘 Wo
 | GET | `/api/interviews` | 最近 100 条概要 |
 | POST | `/api/interviews` | `{role, resume, jd?, main_count?}`，返回 201、preparing 记录与排队任务 |
 | GET | `/api/interviews/{id}` | 恢复完整记录 |
+| DELETE | `/api/interviews/{id}` | 单场本机面试与关联复盘原子删除。重复请求均返回 204，随后查询返回 404 |
 | POST | `/api/interviews/{id}/retry` | 重试计划、下一题或报告；已有任务时幂等返回 |
 | POST | `/api/interviews/{id}/start` | 确认计划并开始 |
 | POST | `/api/interviews/{id}/next` | `{question_id}`，切到下一道预设大题并入队分题复盘，返回 200 |

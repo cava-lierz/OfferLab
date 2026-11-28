@@ -2,35 +2,17 @@
 
 环境：Bash、Python 3.11+（含 venv/pip）、Node.js 22.12+ 和 npm。首次依赖安装需要访问包源。所有命令在项目根目录运行。
 
-## 独立启动与热更新
-
-先安装依赖：
+## 开发启动
 
 ```bash
-python3 scripts/manage.py setup
+python3 scripts/manage.py dev --reload
 ```
 
-终端一，在项目根目录启动后端，开启代码修改后自动重载：
-
-```bash
-.venv/bin/python -m uvicorn backend.app.main:app \
-  --host 127.0.0.1 --port 8000 --reload
-```
-
-终端二，进入前端目录启动 Vite：
-
-```bash
-cd frontend
-npm run dev
-```
-
-Vite 提供前端热更新，并将 `/api` 请求转发到 `127.0.0.1:8000`。一键启动脚本未开启后端自动重载；修改后端代码后需要重启，或使用上述独立启动方式。
-
-两种启动方式选择一种即可，避免重复占用端口。
+此命令统一启动 FastAPI 和 Vite，同时启用前后端热更新。开发页面在 `http://127.0.0.1:5173`，API 在 `http://127.0.0.1:8000`，Ctrl+C 结束两个服务。普通启动和学校 SSH 隧道见[本机操作手册](operations.md)。
 
 ## 测试与构建
 
-安装依赖后，运行完整检查：
+运行完整检查前可用 `python3 scripts/manage.py setup` 安装依赖。
 
 ```bash
 python3 scripts/manage.py check
@@ -72,7 +54,7 @@ npm run build
 
 两套面试规则分别用于默认 Agent 提示注入和学校专用 Agent 文件读取，仍有运行用途，不能当成冗余文件删除。后端数据结构调整时同步更新 `frontend/src/types.ts` 与相关校验；接口与状态机见 [架构约定](architecture.md)。
 
-前端依赖锁保留在 `frontend/package-lock.json`，安装脚本优先使用 `npm ci`。本轮整理未更新依赖版本。
+前端依赖锁保留在 `frontend/package-lock.json`，安装脚本优先使用 `npm ci`。
 
 ## 文档维护
 

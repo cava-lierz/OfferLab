@@ -100,6 +100,17 @@ def trace_summary(path):
             item = {'event': 'tool_result', 'tool': identifier(message.get('toolName')),
                     'resource': calls.get(message.get('toolCallId'), 'other'),
                     'is_error': bool(message.get('isError')), 'elapsed_seconds': elapsed}
+            if item['tool'] in ('web_search', 'web_fetch'):
+                # Some providers encode a failure in the result JSON even when
+                # OpenClaw successfully dispatched the tool.
+                try:
+                    result = json.loads(text)
+                except ValueError:
+                    result = None
+                if isinstance(result, dict):
+                    item['is_error'] = item['is_error'] or bool(result.get('error'))
+                    if isinstance(result.get('results'), list):
+                        item['result_count'] = len(result['results'])
             if item['is_error']:
                 item['error_kind'] = error_kind(text)
             events.append(item)

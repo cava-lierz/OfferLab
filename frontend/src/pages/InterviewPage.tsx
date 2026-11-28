@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import { clearDraft, draftKey } from '../drafts'
+import { clearDraft, clearInterviewDrafts, draftKey } from '../drafts'
 import { useMutation, usePolling } from '../hooks'
 import { isPending, newest, statusLabel } from '../session'
 import { InterviewSetup } from '../components/InterviewSetup'
@@ -27,6 +27,9 @@ export default function InterviewPage({ id, onUpdate, onPrepare }: {
     for (const answer of latest.answers) clearDraft(draftKey(id, answer.question.id))
   }
   const polling = usePolling<Interview>('/interviews/' + id, accept, session && isPending(session) ? 1500 : 5000)
+  useEffect(() => {
+    if (polling.missing) clearInterviewDrafts(id)
+  }, [polling.missing, id])
   const questionId = session?.status === 'active' ? session.current?.id : null
   useEffect(() => {
     if (questionId) currentQuestion.current?.focus({ preventScroll: true })
@@ -38,6 +41,7 @@ export default function InterviewPage({ id, onUpdate, onPrepare }: {
       accept(updated); setFinishConfirm(false); polling.refresh()
     })
   }
+  if (polling.missing) return <div className="card empty"><h2>面试记录已删除或不存在</h2><a href="#history">返回历史记录</a></div>
   if (!session && !polling.error) return <div className="generation-loading"><LoadingIndicator /></div>
   if (!session) return <div className="card empty">
     <h2>暂时无法加载记录</h2>

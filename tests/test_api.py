@@ -82,6 +82,20 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('text/markdown', export.headers['content-type'])
         self.assertIn('演示模式', export.text)
 
+    async def test_delete_is_idempotent_and_isolates_the_selected_record(self):
+        form = {'role': '删除测试', 'resume': '我组织校园项目访谈，设计原型，并参与开发与验证，完成了团队合作项目。'}
+        removed = (await self.client.post('/api/interviews', json=form)).json()['id']
+        kept = (await self.client.post('/api/interviews', json=form)).json()['id']
+        path = '/api/interviews/' + removed
+        for _ in range(2):
+            response = await self.client.delete(path)
+            self.assertEqual((response.status_code, response.content), (204, b''))
+        self.assertEqual((await self.client.get(path)).status_code, 404)
+        self.assertEqual((await self.client.get(path + '/export')).status_code, 404)
+        remaining = [row['id'] for row in (await self.client.get('/api/interviews')).json()]
+        self.assertIn(kept, remaining)
+        self.assertNotIn(removed, remaining)
+
     async def test_validation_and_missing_record(self):
         self.assertEqual((await self.client.get('/api/interviews/missing')).status_code, 404)
         self.assertEqual((await self.client.post('/api/interviews', json={'role': '', 'resume': 'too short'})).status_code, 422)

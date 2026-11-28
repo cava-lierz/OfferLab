@@ -24,4 +24,4 @@ fi
 if [ ! -f .env ]; then
   (umask 077; cp .env.example .env)
 fi
-echo '依赖安装完成。默认演示模式；运行 bash scripts/dev.sh 启动。'
+echo '依赖安装完成。运行 python3 scripts/manage.py dev 启动。'

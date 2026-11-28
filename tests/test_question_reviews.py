@@ -64,6 +64,18 @@ class QuestionReviewTests(unittest.TestCase):
         self.assertEqual(self.store.get(boundary['id']), boundary)
         self.assertEqual(self.review_rows(), [])
 
+    def test_delete_discards_late_review_and_interview_writes(self):
+        state = self.next(self.boundary())
+        review = self.store.claim_review('worker')
+        self.assertIsNotNone(review)
+        with self.store.lease(state['id']) as owner:
+            self.store.delete(state['id'])
+            with self.assertRaises(AppError):
+                self.store.save(state, owner, review=self.engine._review(state))
+        self.assertFalse(self.store.finish_review(review, {'summary': 'late report'}))
+        self.assertEqual(self.review_rows(), [])
+        self.assertEqual(self.store.list(), [])
+
     def test_slow_review_does_not_block_answers_or_final_report(self):
         current = self.next(self.boundary())
         entered, release = threading.Event(), threading.Event()

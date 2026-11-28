@@ -55,7 +55,7 @@ class JobRunner:
                     try:
                         self.engine.process_job(interview_id, self.id)
                     except AppError as exc:
-                        if exc.status != 409:
+                        if exc.status not in (404, 409):
                             logger.error('Job processing failed interview=%s status=%s', interview_id, exc.status)
                     finally:
                         if self.stopped.is_set():

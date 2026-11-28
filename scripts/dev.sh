@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [[ $# -gt 1 || ( $# -eq 1 && $1 != '--reload' ) ]]; then
+  echo '用法：python3 scripts/manage.py dev [--reload]' >&2
+  exit 2
+fi
 if [ ! -x .venv/bin/python ] || [ ! -f frontend/node_modules/vite/bin/vite.js ] || ! .venv/bin/python -c 'import fastapi, httpx, dotenv, multipart, pypdf' >/dev/null 2>&1; then
   bash scripts/setup.sh
+elif [ ! -f .env ]; then
+  (umask 077; cp -n .env.example .env)
 fi
 backend_pid=''
 frontend_pid=''
@@ -14,7 +20,7 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
-.venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 &
+.venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 "$@" &
 backend_pid=$!
 (
   cd frontend

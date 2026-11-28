@@ -13,3 +13,13 @@ export function saveDraft(key: string, draft: Draft): boolean {
 export function clearDraft(key: string) {
   try { localStorage.removeItem(key) } catch { /* No stored draft to clear. */ }
 }
+
+export function clearInterviewDrafts(interviewId: string) {
+  const prefix = draftKey(interviewId, '')
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index)
+      if (key?.startsWith(prefix)) localStorage.removeItem(key)
+    }
+  } catch { /* Browser storage may be unavailable. */ }
+}

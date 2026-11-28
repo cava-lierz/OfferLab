@@ -1,8 +1,6 @@
 # OfferLab 面试官 Agent 部署
 
-本包针对已检查的学校 OpenClaw `2026.5.22`。它新增或更新独立的 `interviewer`：首次安装使用现有默认模型，更新时保留该 Agent 已显式选择的模型，仅开放 `read` 工具，读取面试 Skill、题库和评价标准。没有安装浏览器、搜索、命令执行或额外插件，也安装器不负责切换模型；个人 DeepSeek 配置见下文。
-
-2026-11-26，开发者已确认个人 DeepSeek 切换成功、响应加快。已完成接入的环境无需重复执行首次配置。
+本包针对学校 OpenClaw `2026.5.22`。安装器新增或更新 `interviewer`，保留已选模型，配置 `read`、`web_search` 和 `web_fetch` 三个工具。面试官 Skill 决定如何拟定查询、筛选面经及设计岗位题。搜索服务使用学校 Gateway 的配置。
 
 ## 源码与安装范围
 
@@ -17,7 +15,7 @@ Agent 的配置使用 `agents.list`，工作区为 `~/.openclaw/workspace-interv
 在本机项目根目录打包并上传：
 
 ```bash
-python3 scripts/package_interviewer.py
+python3 scripts/manage.py package
 scp data/offerlab-interviewer.tar.gz openclaw:~/
 ssh openclaw
 ```
@@ -55,6 +53,12 @@ openclaw skills --agent interviewer list
 
 Gateway 是否热加载需按学校运行实例验证。若 CLI 已识别新 Agent 而 HTTP 调用仍未识别，再检查服务加载情况。学校进程由 supervisord 管理，不使用 `systemctl --user`，不为安装文件而直接升级或重建 Gateway。
 
+## 学校端的搜索服务
+
+已有可用搜索提供商时，更新面试官后可直接使用。需要选择或配置提供商时，在学校 OpenClaw 所在环境运行 `openclaw configure --section web`。按学校出网条件和账号权限选择服务；如果需要密钥，配置在学校端。此选项影响该 Gateway 的搜索提供商。安装器仅调整专用 Agent 的工具白名单。[对应版本的 OpenClaw 搜索工具文档](https://github.com/openclaw/openclaw/blob/v2026.5.22/docs/tools/web.md)
+
+验收时在目标岗位里填写“Java 后端实习 · 技术一面”，在 JD 中写明“请检索该岗位的公开面经来备课”，简历使用虚构材料。计划完成后从本机执行 `python3 scripts/manage.py runs`。找到 `agent=interviewer`、`task=plan` 的那次运行，检查 `available_tools`、实际 `tool_call` 及对应的 `tool_result`。对返回结构化列表的搜索提供商，`result_count` 表示结果条数。面试官可根据摘要充分程度决定是否调用 `web_fetch`。若工具不可用，检查搜索提供商和学校出网权限；新工具未出现在运行轨迹时，核对 Gateway 是否加载新配置及全局或沙箱工具策略。
+
 ## 本机应用切换
 
 云端安装并验证后，在本机根目录 `.env` 添加或修改：
@@ -68,7 +72,7 @@ OPENCLAW_AGENT_ID=interviewer
 重启本机应用：
 
 ```bash
-bash scripts/dev.sh
+python3 scripts/manage.py dev
 ```
 
 访问 `http://127.0.0.1:8000/api/health` 应看到 `agent_id: interviewer`。新建一场 OpenClaw 面试进行验收。此字段反映后端目标配置，不单独证明云端实际路由正确；仍需结合 Agent 会话或运行记录核对。
@@ -80,7 +84,7 @@ bash scripts/dev.sh
 - 复盘时，真实读取评价标准，报告引文通过本机后端校验。
 - 记录工具调用次数和总耗时。专用 Agent 不等同于模型自动加速，不能把文件存在或模型自称读取过当作调用证据。
 
-`python3 scripts/check_gateway.py` 会携带相同 Agent 目标进行基础连接检查，但不验证完整面试或工具调用轨迹。
+`python3 scripts/manage.py gateway-check` 会携带相同 Agent 目标进行基础连接检查，但不验证完整面试或工具调用轨迹。
 
 ## 切回默认 Agent
 
@@ -105,7 +109,7 @@ python3 ~/configure_deepseek.py
 
 脚本先调用学校版本的 `openclaw config validate`，成功后将原配置备份到 `~/.openclaw/offerlab-backups/deepseek-时间戳-随机标识/`，再写入配置。`--check` 使用占位密钥，仅验证配置格式，不验证密钥、网络或模型工具调用。脚本不会重启 Gateway。学校版本为 `2026.5.22`，使用自定义 OpenAI 兼容提供商，无需升级或安装新版插件。
 
-切换后在本机运行 `python3 scripts/check_gateway.py`，并新建面试验证 Skill 读取和输出。若旧会话固定了原模型，应使用新会话；若服务没有热加载，按学校平台的 supervisord 管理方式重载。不要改本机的 `OPENCLAW_MODEL=openclaw`。
+切换后在本机运行 `python3 scripts/manage.py gateway-check`，并新建面试验证 Skill 读取和输出。若旧会话固定了原模型，应使用新会话；若服务没有热加载，按学校平台的 supervisord 管理方式重载。不要改本机的 `OPENCLAW_MODEL=openclaw`。
 
 密钥输错或需要更换时，重新上传最新脚本，在学校端执行 `python3 ~/configure_deepseek.py --update-key`，隐藏输入正确的密钥。该选项只更新已有提供商的密钥，仍执行配置校验和备份，不更改模型、API 地址或 Agent 设置。校验成功只代表配置格式正确，需再次运行本机 `scripts/check_gateway.py` 验证真实调用。
 

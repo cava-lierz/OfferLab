@@ -180,7 +180,10 @@ class Engine:
     def _advance(self, state, generate):
         provider = self.providers[state['mode']]
         if state['status'] == 'preparing':
-            state['plan'] = validation.plan(generate(provider, 'plan'), state['main_count'])
+            result = generate(provider, 'plan')
+            plan = validation.plan(result, state['main_count'])
+            research = validation.preparation_research(result.get('research'))
+            state.update(plan=plan, research=research)
             state['status'] = 'ready'
         elif state['status'] == 'awaiting_next':
             current = state['current']
@@ -199,6 +202,8 @@ class Engine:
             # Completed analyses are hints; original answers remain the source of truth.
             snapshot = dict(state, question_reviews=self.store.completed_reviews(state['id']))
             state['report'] = validation.report(generate(provider, 'report', snapshot), state['answers'], state['mode'])
+            if state.get('research'):
+                state['report']['sources'] = state['research']['sources']
             state['status'] = 'completed'
 
 
@@ -213,7 +218,12 @@ def markdown_report(state):
                   item['feedback'], '', '练习建议：' + item['suggestion'], '']
         for citation in item['evidence']:
             lines += ['回答 ' + citation['answer_id'], *['> ' + line for line in citation['quote'].splitlines()], '']
-    lines += ['## 资料来源', '', report['source_note'], '', '评价仅用于训练反馈，不表示真实招聘录用概率。', '', '## 完整问答', '']
+    lines += ['## 资料来源', '', report['source_note'], '']
+    if report.get('sources'):
+        lines += ['面试官提供的备课参考链接', '']
+        lines += ['- <' + item['url'] + '>' for item in report['sources']]
+        lines.append('')
+    lines += ['评价仅用于训练反馈，不表示真实招聘录用概率。', '', '## 完整问答', '']
     for answer in state['answers']:
         lines += ['### ' + answer['question']['text'], '', answer['text'], '']
     return '\n'.join(lines)

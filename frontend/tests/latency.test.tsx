@@ -5,7 +5,7 @@ import { GenerationPanel } from '../src/components/GenerationPanel'
 import { InterviewSetup } from '../src/components/InterviewSetup'
 import { Transcript } from '../src/components/Transcript'
 import { mergeHistory, newest, statusLabel } from '../src/session'
-import { clearDraft, draftKey, readDraft, saveDraft } from '../src/drafts'
+import { clearDraft, clearInterviewDrafts, draftKey, readDraft, saveDraft } from '../src/drafts'
 import type { Interview } from '../src/types'
 
 const base: Interview = {
@@ -65,6 +65,8 @@ test('saved transcript remains available while waiting and escapes user HTML', (
 test('draft survives remount with the same request id, is isolated, and clears on acknowledgement', () => {
   const items = new Map<string, string>()
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    get length() { return items.size },
+    key: (index: number) => [...items.keys()][index] ?? null,
     getItem: (key: string) => items.get(key) ?? null,
     setItem: (key: string, value: string) => items.set(key, value),
     removeItem: (key: string) => items.delete(key),
@@ -76,6 +78,11 @@ test('draft survives remount with the same request id, is isolated, and clears o
   assert.equal(readDraft(draftKey('two', 'question')).text, '')
   clearDraft(key)
   assert.equal(readDraft(key).text, '')
+  saveDraft(key, draft)
+  saveDraft(draftKey('one', 'next'), draft)
+  saveDraft(draftKey('one-more', 'other'), draft)
+  clearInterviewDrafts('one')
+  assert.deepEqual([...items.keys()], [draftKey('one-more', 'other')])
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('blocked') } })
   assert.equal(saveDraft(key, draft), false)
   assert.equal(readDraft(key).text, '')

@@ -686,7 +686,17 @@ select {
   padding: 23px 0;
   border-top: 1px solid #edf1ed;
 }
-.history-row:hover h3 {
+.history-link {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.history-delete.text-button { color: #984639; flex-shrink: 0; }
+.history-confirm.confirm-box { margin: 0 0 16px; }
+.history-link:hover h3 {
   color: #547b47;
 }
 .history-icon {
@@ -1205,12 +1215,8 @@ summary {
   .history-icon {
     display: none;
   }
-  .history-row {
-    flex-wrap: wrap;
-  }
-  .history-row .grow {
-    min-width: 190px;
-  }
+  .history-link { flex-wrap: wrap; }
+  .history-link .grow { flex-basis: 100%; }
   .heading-status {
     margin: 10px 0 0;
     display: table;

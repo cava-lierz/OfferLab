@@ -49,7 +49,7 @@ class InstallerTests(unittest.TestCase):
         main, interviewer = merged['agents']['list']
         self.assertEqual(main, {'id': 'main', 'default': True, 'workspace': '/school/custom-main'})
         self.assertEqual(interviewer['id'], 'interviewer')
-        self.assertEqual(interviewer['tools']['allow'], ['read'])
+        self.assertEqual(interviewer['tools']['allow'], ['read', 'web_search', 'web_fetch'])
         self.assertTrue(interviewer['tools']['fs']['workspaceOnly'])
         self.assertEqual(interviewer['skills'], ['offerlab-interviewer'])
 

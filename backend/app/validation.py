@@ -1,5 +1,6 @@
 """Validate model output without trusting model-supplied transitions or citations."""
 import json
+from urllib.parse import urlsplit
 from .store import AppError
 
 
@@ -32,8 +33,39 @@ def plan(value, count):
     for item in items:
         if not isinstance(item, dict):
             raise AppError('模型问题格式不正确', 502)
-        result.append({'topic': text(item.get('topic'), 100), 'question': text(item.get('question'))})
+        question = {'topic': text(item.get('topic'), 100), 'question': text(item.get('question'))}
+        if 'criterion' in item:
+            question['criterion'] = text(item['criterion'], 1000)
+        result.append(question)
     return result
+
+
+def preparation_research(value):
+    """Validate an agent-reported reference list without fetching its URLs."""
+    if value is None:
+        return None  # Older agents only return questions.
+    statuses = ('used', 'no_match', 'unavailable', 'skipped')
+    if not isinstance(value, dict) or value.get('status') not in statuses:
+        raise AppError('面试官返回了无效的备课状态，请重试', 502)
+    rows = value.get('sources')
+    if not isinstance(rows, list) or len(rows) > 4 or bool(rows) != (value['status'] == 'used'):
+        raise AppError('备课来源与检索状态不符，请重试', 502)
+    sources = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise AppError('备课来源格式不正确', 502)
+        url = text(row.get('url'), 2048)
+        try:
+            parsed = urlsplit(url)
+            if (parsed.scheme not in ('https', 'http') or not parsed.hostname or parsed.username is not None
+                    or any(c.isspace() or ord(c) < 32 or c in '<>\\' for c in url)):
+                raise ValueError
+        except ValueError:
+            raise AppError('备课来源链接格式不正确', 502) from None
+        title = ' '.join(text(row.get('title'), 300).split())
+        if not any(item['url'] == url for item in sources):
+            sources.append({'title': title, 'url': url})
+    return {'status': value['status'], 'sources': sources}
 
 
 def decision(value):
@@ -75,4 +107,4 @@ def report(value, answers, mode):
                         'feedback': text(item.get('feedback')), 'suggestion': text(item.get('suggestion')),
                         'evidence': citations})
     return {'summary': text(value.get('summary')), 'dimensions': checked,
-            'sources': [], 'source_note': '尚未接入外部检索；本报告仅依据本场回答和项目内评价标准。'}
+            'sources': [], 'source_note': '能力评价依据本场回答和项目内评价标准。'}

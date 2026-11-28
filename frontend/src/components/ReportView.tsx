@@ -1,3 +1,4 @@
+import { PreparationSources } from './PreparationSources'
 import type { Interview, Preparation } from '../types'
 
 export function ReportView({ session, onPractice }: {
@@ -37,6 +38,7 @@ export function ReportView({ session, onPractice }: {
     <section className="card mt-6">
       <h3>资料来源与评价边界</h3>
       <p className="muted">{report.source_note} 评价仅用于训练反馈，不表示真实招聘录用概率。</p>
+      <PreparationSources research={session.research} />
       <details>
         <summary>查看完整问答（{session.answers.length} 次回答）</summary>
         {session.answers.map((answer, i) => <div className="exchange" key={answer.id}>

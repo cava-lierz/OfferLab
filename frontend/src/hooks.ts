@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from './api'
+import { api, ApiError } from './api'
 import { errorMessage } from './session'
 
 export function useRoute() {
@@ -16,13 +16,16 @@ export function useRoute() {
 // One request at a time, abort on navigation, resume immediately on tab focus.
 export function usePolling<T>(path: string, accept: (value: T) => void, intervalMs: number) {
   const [error, setError] = useState('')
+  const [missing, setMissing] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
   const acceptRef = useRef(accept)
   const intervalRef = useRef(intervalMs)
   acceptRef.current = accept
   intervalRef.current = intervalMs
-  const refresh = useCallback(() => setRefreshToken(value => value + 1), [])
+  // Ignore older list requests as soon as a create or delete is acknowledged.
+  const generation = useRef(0)
+  const refresh = useCallback(() => setRefreshToken(++generation.current), [])
   useEffect(() => {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout>
@@ -34,11 +37,15 @@ export function usePolling<T>(path: string, accept: (value: T) => void, interval
       inFlight = true
       try {
         const value = await api<T>(path, undefined, controller.signal)
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && refreshToken === generation.current) {
+          setMissing(false)
           acceptRef.current(value); setError(''); setLoaded(true); failures = 0
         }
       } catch (e) {
-        if (!controller.signal.aborted) { setError(errorMessage(e)); failures++ }
+        if (!controller.signal.aborted && refreshToken === generation.current) {
+          setMissing(e instanceof ApiError && e.status === 404)
+          setError(errorMessage(e)); failures++
+        }
       } finally {
         inFlight = false
         if (!controller.signal.aborted) {
@@ -57,7 +64,7 @@ export function usePolling<T>(path: string, accept: (value: T) => void, interval
       document.removeEventListener('visibilitychange', wake)
     }
   }, [path, refreshToken])
-  return { error, loaded, refresh }
+  return { error, loaded, missing, refresh }
 }
 
 export function useMutation() {
@@ -70,5 +77,5 @@ export function useMutation() {
     try { await work() } catch (e) { setError(errorMessage(e)) }
     finally { lock.current = false; setBusy(false) }
   }
-  return { busy, error, run }
+  return { busy, error, run, clearError: () => setError('') }
 }

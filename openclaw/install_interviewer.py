@@ -13,6 +13,7 @@ import uuid
 
 AGENT_ID = 'interviewer'
 SKILL_NAME = 'offerlab-interviewer'
+AGENT_TOOLS = ('read', 'web_search', 'web_fetch')
 SOURCE = Path(__file__).resolve().parent / 'interviewer'
 FILES = (
     'AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md',
@@ -60,7 +61,7 @@ def merge_config(original, runtime_root):
         'workspace': str(runtime_root / 'workspace-interviewer'),
         'agentDir': str(runtime_root / 'agents/interviewer/agent'),
         'model': copy.deepcopy(model), 'skills': [SKILL_NAME],
-        'tools': {'profile': 'coding', 'allow': ['read'],
+        'tools': {'profile': 'coding', 'allow': list(AGENT_TOOLS),
                   'deny': ['exec', 'process', 'write', 'edit', 'apply_patch'],
                   'fs': {'workspaceOnly': True}},
     }
@@ -140,7 +141,7 @@ def install(state_dir, runtime_root, validator=None):
     finally:
         lock.unlink(missing_ok=True)
     return {'agent_id': AGENT_ID, 'workspace': str(runtime_root / 'workspace-interviewer'),
-            'skills': [SKILL_NAME], 'tools': ['read'], 'backup': str(backup),
+            'skills': [SKILL_NAME], 'tools': list(AGENT_TOOLS), 'backup': str(backup),
             'validated_by_openclaw': validator is not None}
 
 

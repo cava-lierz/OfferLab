@@ -68,7 +68,9 @@ class NextQuestion(BaseModel):
 @app.get('/api/health')
 def health():
     return {'status': 'ok', 'mode': MODE, 'token_configured': bool(os.getenv('OPENCLAW_TOKEN')),
-            'gateway_verified': False, 'retrieval_available': False, 'request_timeout_seconds': timeout,
+            'gateway_verified': False,
+            # Native tools are resolved on the Gateway. Only a run trace confirms availability.
+            'retrieval_available': None if MODE == 'openclaw' and agent_id == 'interviewer' else False, 'request_timeout_seconds': timeout,
             'report_timeout_seconds': report_timeout, 'agent_id': agent_id or 'default'}
 
 
@@ -94,6 +96,12 @@ def create_interview(body: CreateInterview):
 @app.get('/api/interviews/{interview_id}')
 def get_interview(interview_id: str):
     return store.get(interview_id)
+
+
+@app.delete('/api/interviews/{interview_id}', status_code=204)
+def delete_interview(interview_id: str):
+    store.delete(interview_id)
+    return Response(status_code=204)
 
 
 def accepted(state):

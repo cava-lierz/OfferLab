@@ -34,7 +34,7 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
             <form className="card preparation" onSubmit={create}>
               <div className="section-title"><h2>准备你的面试</h2><button type="button" className="text-button" disabled={busy} onClick={() => { setForm(example); setNotice('已填入虚构示例，可修改后使用。') }}>使用示例体验</button></div>
               <label htmlFor="role">目标岗位 <span className="required">*</span></label>
-              <input id="role" placeholder="例如：产品经理实习生、算法工程师……" required maxLength={100} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} />
+              <input id="role" placeholder="例如：Java 后端实习 · 技术一面（可附目标公司）" required maxLength={100} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} />
               <div className="label-row"><label htmlFor="resume">简历与项目经历 <span className="required">*</span></label><span>至少 20 字</span></div>
               <label className="upload-box"><span className="upload-icon" aria-hidden="true">↥</span><strong>上传简历，或在下方粘贴文本</strong><span>文本型 PDF / TXT · 最大 5 MB</span>
                 <input type="file" accept=".pdf,.txt" disabled={busy} onChange={e => {
@@ -51,7 +51,7 @@ export default function PreparePage({ health, form, setForm, onCreated }: {
               <div className="label-row"><label htmlFor="jd">岗位描述 <span className="optional">选填</span></label><span>帮助问题更贴近岗位</span></div>
               <textarea id="jd" maxLength={12000} placeholder="粘贴 JD 中的工作职责、任职要求。暂不支持自动读取岗位链接。" value={form.jd} onChange={e => setForm({ ...form, jd: e.target.value })} />
               <div className="form-bottom"><label htmlFor="count">主问题数量 <select id="count" value={form.main_count} onChange={e => setForm({ ...form, main_count: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n} 道</option>)}</select></label><button className="primary" disabled={busy || !health} type="submit">{busy ? <LoadingIndicator /> : '准备面试'}</button></div>
-              <p className="privacy-note">材料保存在本机；OpenClaw 模式下会发送至学校 Gateway 用于生成问题和反馈。</p>
+              <p className="privacy-note">材料保存在本机。OpenClaw 模式会将材料发送至学校 Gateway。专用面试官可使用公开岗位关键词联网备课。</p>
             </form>
             <aside className="right-column">
               <div className="feature-card"><div className="eyebrow">YOUR NEXT CHAPTER</div><h2>练习的不只是回答，<br />还有表达自己的方式。</h2><div className="orbit-art" aria-hidden="true"><div className="orbit-ring r1" /><div className="orbit-ring r2" /><div className="orbit-ring r3" /><div className="orbit-center">✦</div><span className="orbit-tag tag-one">经历</span><span className="orbit-tag tag-two">思考</span><span className="orbit-tag tag-three">表达</span></div></div>

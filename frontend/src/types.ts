@@ -7,14 +7,19 @@ export type Generation = {
   phase: 'queued' | 'generating' | 'validating' | 'completed' | 'failed'
   queued_at: number; started_at?: number; deadline_at?: number; finished_at?: number; timeout_seconds: number
 }
+export type PreparationResearch = {
+  status: 'used' | 'no_match' | 'unavailable' | 'skipped'
+  sources: { title: string; url: string }[]
+}
 export type Report = {
   summary: string
   dimensions: { name: string; score: number | null; feedback: string; suggestion: string; evidence: { answer_id: string; quote: string }[] }[]
-  sources: unknown[]
+  sources: PreparationResearch['sources']
   source_note: string
 }
 export type Interview = {
   id: string; role: string; resume: string; jd: string; main_count: number; mode: 'demo' | 'openclaw'
+  research?: PreparationResearch | null
   status: Status; plan: { topic: string; question: string }[]; current: Question | null
   answers: Answer[]; report: Report | null; error: string | null; created_at: number; updated_at: number
   generation?: Generation | null; revision?: number

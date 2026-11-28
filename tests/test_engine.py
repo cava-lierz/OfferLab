@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.app.engine import Engine, markdown_report
 from backend.app.provider import DemoProvider
 from backend.app.store import AppError, Store
-from backend.app.validation import parse_json
+from backend.app.validation import parse_json, preparation_research
 from backend.app.resume import extract_resume, MAX_BYTES
 
 
@@ -63,6 +63,31 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(d['score'] is None for d in state['report']['dimensions']))
         self.assertIn('演示模式（非模型评价）', markdown_report(state))
         self.assertIn(state['answers'][0]['text'], markdown_report(state))
+
+    def test_agent_plan_keeps_criteria_and_reuses_preparation_sources_in_report(self):
+        from unittest.mock import patch
+        source = {'title': '岗位面试经历', 'url': 'https://example.org/interview'}
+        prepared = {'questions': [{'topic': '接口性能', 'question': '你先看哪项指标？', 'criterion': '给出判断依据'}],
+                    'research': {'status': 'used', 'sources': [source]}}
+        with patch.object(self.provider, 'generate', return_value=prepared):
+            state = self.start()
+        self.assertEqual(self.store.get(state['id'])['plan'][0]['criterion'], '给出判断依据')
+        self.assertEqual(state['research'], prepared['research'])
+        state, _ = self.answer(state)
+        final = self.engine.act(state['id'], 'finish')
+        self.assertEqual(final['report']['sources'], [source])
+        self.assertIn(source['url'], markdown_report(final))
+
+    def test_untrusted_or_inconsistent_research_is_rejected(self):
+        self.assertIsNone(preparation_research(None))
+        for status in ('no_match', 'unavailable', 'skipped'):
+            empty = {'status': status, 'sources': []}
+            self.assertEqual(preparation_research(empty), empty)
+        for url in ('javascript:alert(1)', 'https://example.org/>x', 'https://user@domain/path'):
+            with self.assertRaises(AppError):
+                preparation_research({'status': 'used', 'sources': [{'title': 'test', 'url': url}]})
+        with self.assertRaises(AppError):
+            preparation_research({'status': 'used', 'sources': []})
 
     def test_forced_followups_are_bounded_by_backend(self):
         self.provider.always_followup = True

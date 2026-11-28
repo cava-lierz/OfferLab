@@ -8,7 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 COMMANDS = {
     'setup': ('安装本机依赖，首次创建 .env', ['bash', 'scripts/setup.sh']),
-    'dev': ('启动前后端，Ctrl+C 同时停止', ['bash', 'scripts/dev.sh']),
+    'dev': ('启动前后端，--reload 开启后端热更新', ['bash', 'scripts/dev.sh']),
     'check': ('运行本地测试和前端构建，不调用模型', ['bash', 'scripts/check.sh']),
     'gateway-config': ('隐藏输入 Gateway Token，写入本机 .env', [sys.executable, 'scripts/configure_gateway.py']),
     'gateway-check': ('检查隧道并发起一次真实模型请求', [sys.executable, 'scripts/check_gateway.py']),
@@ -25,9 +25,14 @@ def main():
     parser = argparse.ArgumentParser(description='OfferLab 本机开发与运维入口（Python 标准库，无需先安装依赖）')
     commands = parser.add_subparsers(dest='command', required=True)
     for name, (description, _) in COMMANDS.items():
-        commands.add_parser(name, help=description, description=description)
+        command_parser = commands.add_parser(name, help=description, description=description)
+        if name == 'dev':
+            command_parser.add_argument('--reload', action='store_true', help='后端代码变更时自动重启')
+
     args = parser.parse_args()
     command = COMMANDS[args.command][1]
+    if args.command == 'dev' and args.reload:
+        command = [*command, '--reload']
     os.chdir(ROOT)
     # Replace the wrapper so signals and exit codes belong to the actual command.
     try:

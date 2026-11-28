@@ -78,6 +78,8 @@ class ProviderTests(unittest.TestCase):
             system = payload['messages'][0]['content']
             self.assertIn('offerlab-interviewer', system)
             self.assertIn('read', system)
+            self.assertIn('web_search', system)
+            self.assertIn('web_fetch', system)
             self.assertNotIn('不调用工具', system)
             return httpx.Response(200, json={'choices': [{'message': {'content': '{"questions":[]}'}}]})
         self.generate(handler)
