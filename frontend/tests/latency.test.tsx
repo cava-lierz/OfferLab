@@ -118,3 +118,13 @@ test('creation retries reuse one ID until the form changes or the server acknowl
     else Reflect.deleteProperty(globalThis, 'sessionStorage')
   }
 })
+
+test('project replay binds the saved answer to its selected source and escapes code as text', async () => {
+  const { ProjectReplay } = await import('../src/components/ProjectEvidence')
+  const item = { id: 'E2', path: 'example.ts', start: 12, end: 13, code: '<demo>', url: 'https://github.com/example/work/blob/abc/example.ts#L12-L13' }
+  const session: Interview = { ...base, resume: '我实现了这个修改', project: { id: 'preview', sha: 'abc', title: 'Example', url: 'https://github.com/example/work/pull/1', scanned_files: 1, file_count: 1, excerpts: [item] },
+    answers: [{ id: 'answer', request_id: 'req', excerpt_id: item.id, question: { id: 'q', text: '请指出依据', topic: '项目', followup: 1, main_index: 0 }, text: '我的具体解释' }] }
+  const html = renderToStaticMarkup(<ProjectReplay session={session} />)
+  for (const value of [session.resume, item.path, item.url, '我的具体解释', '&lt;demo&gt;']) assert.ok(html.includes(value))
+  assert.ok(!html.includes('<demo>'))
+})

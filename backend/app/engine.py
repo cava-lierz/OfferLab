@@ -12,12 +12,17 @@ class Engine:
     def __init__(self, store, providers):
         self.store, self.providers = store, providers
 
-    def create(self, role, resume, jd='', main_count=5, mode='demo', *, request_id=None, practice_focus=''):
+    def create(self, role, resume, jd='', main_count=5, mode='demo', *, request_id=None, practice_focus='', project=None):
         if mode not in self.providers or type(main_count) is not int or not 1 <= main_count <= 5:
             raise AppError('无效的模式或问题数量')
         role, resume, jd = role.strip(), resume.strip(), jd.strip()
-        if not 1 <= len(role) <= 100 or not 20 <= len(resume) <= 20000 or len(jd) > 12000:
+        if project:
+            if not 5 <= len(resume) <= 800 or main_count != 1:
+                raise AppError('项目面试需要一条 5–800 字的简历经历和一组问答。')
+        elif not 20 <= len(resume) <= 20000:
             raise AppError('请填写职位（1–100 字）和简历（20–20000 字）；JD 最多 12000 字')
+        if not 1 <= len(role) <= 100 or len(jd) > 12000:
+            raise AppError('职位为 1–100 字，JD 最多 12000 字')
         practice_focus = practice_focus.strip()
         if len(practice_focus) > 4000:
             raise AppError('本次练习重点最多 4000 字')
@@ -27,6 +32,8 @@ class Engine:
                  'revision': 0, 'created_at': time.time(), 'updated_at': time.time()}
         if practice_focus:
             state['practice_focus'] = practice_focus
+        if project:
+            state['project'] = project
         return self.store.create(state, request_id)
 
     def _queued_job(self, mode, task):
@@ -52,7 +59,8 @@ class Engine:
             return False
         prior = next((a for a in state['answers'] if a['request_id'] == payload.get('request_id')), None)
         if prior:
-            if prior['text'] != payload.get('text', '').strip() or prior['question']['id'] != payload.get('question_id'):
+            if (prior['text'] != payload.get('text', '').strip() or prior['question']['id'] != payload.get('question_id')
+                    or prior.get('excerpt_id') != payload.get('excerpt_id')):
                 raise AppError('重复请求标识对应了不同内容', 409)
             return True
         return False
@@ -85,9 +93,18 @@ class Engine:
                     raise AppError('回答为 1–8000 字，且必须携带有效的请求标识')
                 if state['status'] != 'active' or question_id != state['current']['id']:
                     raise AppError('此问题已回答或面试状态已变化，请刷新', 409)
-                state['answers'].append({'id': uid(), 'request_id': request_id, 'text': answer_text,
-                                         'question': state['current'].copy()})
-                state['status'] = 'awaiting_next'
+                answer = {'id': uid(), 'request_id': request_id, 'text': answer_text, 'question': state['current'].copy()}
+                project = state.get('project')
+                excerpt_id = payload.get('excerpt_id')
+                if excerpt_id is not None:
+                    if not project or all(row['id'] != excerpt_id for row in project['excerpts']):
+                        raise AppError('请选择本场项目中的片段。', 422)
+                    answer['excerpt_id'] = excerpt_id
+                final_round = project is not None and state['current']['followup'] == 1
+                if final_round and not excerpt_id:
+                    raise AppError('请指出支撑这次回答的代码或测试片段。', 422)
+                state['answers'].append(answer)
+                state['status'] = 'reporting' if final_round else 'awaiting_next'
             elif action == 'start':
                 if state['status'] != 'ready':
                     raise AppError('请先生成并确认面试计划', 409)
@@ -103,6 +120,8 @@ class Engine:
             elif action == 'finish':
                 if state['status'] == 'completed':
                     return state
+                if state.get('project') and len(state['answers']) < 2:
+                    raise AppError('请完成两轮项目问答后再生成复盘。', 409)
                 if state['status'] not in ('active', 'awaiting_next', 'between_questions', 'reporting'):
                     raise AppError('面试尚未开始', 409)
                 if not state['answers']:
@@ -114,10 +133,7 @@ class Engine:
             state['error'] = None
             if task:
                 state['generation'] = self._queued_job(state['mode'], task)
-            if review:
-                self.store.save(state, owner, review=review)
-            else:
-                self.store.save(state, owner)
+            self.store.save(state, owner, review=review, release=True)
             return state
 
     def _review(self, state):
@@ -147,10 +163,10 @@ class Engine:
         return True
 
     def process_job(self, interview_id, worker_id):
-        with self.store.lease(interview_id) as owner:
+        with self.store.lease(interview_id, queued_only=True) as owner:
             state = self.store.get(interview_id)
             job = state.get('generation') or {}
-            if job.get('status') != 'queued':
+            if owner is None:
                 return state
             now = time.time()
             self.store.renew_lease(interview_id, owner, max(180, job['timeout_seconds'] + 30))
@@ -174,7 +190,7 @@ class Engine:
                 # Never expose provider internals or leave unexpected failures spinning forever.
                 state['error'] = '生成遇到异常，材料和回答已保存，请重试。'
                 job.update(status='failed', phase='failed', finished_at=time.time())
-            self.store.save(state, owner)
+            self.store.save(state, owner, release=True)
             return state
 
     def act(self, interview_id, action, payload=None):
@@ -197,6 +213,8 @@ class Engine:
             choice = {'action': 'next'}
             if current['followup'] < 2:
                 choice = validation.decision(generate(provider, 'decision'))
+            if state.get('project') and choice['action'] != 'followup':
+                raise AppError('项目面试需要一条结合首轮回答的追问，请重试。', 502)
             if choice['action'] == 'followup':
                 state['current'] = self._question(state, current['main_index'], current['followup'] + 1, choice['question'])
                 state['status'] = 'active'
@@ -231,6 +249,13 @@ def markdown_report(state):
         lines += ['- <' + item['url'] + '>' for item in report['sources']]
         lines.append('')
     lines += ['评价仅用于训练反馈，不表示真实招聘录用概率。', '', '## 完整问答', '']
+    project = state.get('project')
+    if project:
+        lines += ['简历原句：' + state['resume'], '', '作品：' + project['url'], '固定提交：' + project['sha'], '']
     for answer in state['answers']:
         lines += ['### ' + answer['question']['text'], '', answer['text'], '']
+        if project and answer.get('excerpt_id'):
+            ref = next(r for r in project['excerpts'] if r['id'] == answer['excerpt_id'])
+            lines += ['本轮指证：' + ref['path'], '<' + ref['url'] + '>', '',
+                      *['    ' + line for line in ref['code'].split('\n')], '']
     return '\n'.join(lines)

@@ -5,7 +5,7 @@ export class ApiError extends Error {
 }
 
 async function request(path: string, options: RequestInit) {
-  const timeout = AbortSignal.timeout(15_000)
+  const timeout = AbortSignal.timeout(path === '/projects/preview' ? 30_000 : 15_000)
   try {
     const response = await fetch('/api' + path, {
       ...options, signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,

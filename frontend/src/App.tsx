@@ -3,6 +3,7 @@ import { usePolling, useRoute } from './hooks'
 import { clearInterviewDrafts } from './drafts'
 import { deleteInterview } from './api'
 import { mergeHistory, newest } from './session'
+import ProjectPage from './pages/ProjectPage'
 import PreparePage from './pages/PreparePage'
 import HistoryPage from './pages/HistoryPage'
 import InterviewPage from './pages/InterviewPage'
@@ -17,7 +18,7 @@ export default function App() {
   const [history, setHistory] = useState<History[]>([])
   const [form, setForm] = useState<Preparation>(empty)
   const sessionId = route.startsWith('interview/') ? route.slice(10) : null
-  const view = route === 'history' ? 'history' : sessionId ? 'interview' : 'prepare'
+  const view = route === 'project' ? 'project' : route === 'history' ? 'history' : sessionId ? 'interview' : 'prepare'
   const healthPoll = usePolling<Health>('/health', setHealth, 30_000)
   const historyPoll = usePolling<History[]>('/interviews', items => {
     setHistory(previous => {
@@ -46,6 +47,7 @@ export default function App() {
       <div className="nav-label">你的练习空间</div>
       <nav aria-label="主导航">
         <a className={view === 'prepare' ? 'selected' : ''} href="#prepare"><span aria-hidden="true">✦</span> 开始练习</a>
+        <a className={view === 'project' ? 'selected' : ''} href="#project"><span aria-hidden="true">⌘</span> 项目面试</a>
         <a className={view === 'interview' ? 'selected' : ''} href={sessionId ? '#interview/' + sessionId : '#history'}><span aria-hidden="true">◫</span> 面试与复盘</a>
         <a className={view === 'history' ? 'selected' : ''} href="#history"><span aria-hidden="true">◷</span> 历史记录 <span className="count">{history.length}</span></a>
       </nav>
@@ -54,7 +56,7 @@ export default function App() {
     </aside>
 
     <main>
-      <header className="topbar"><span>工作台 <span className="slash">/</span> {view === 'prepare' ? '面试准备' : view === 'history' ? '历史记录' : '面试与复盘'}</span>
+      <header className="topbar"><span>工作台 <span className="slash">/</span> {view === 'project' ? '项目面试' : view === 'prepare' ? '面试准备' : view === 'history' ? '历史记录' : '面试与复盘'}</span>
         {view === 'prepare' && <span className={'mode-pill ' + (health?.mode === 'demo' ? 'demo' : '')}>{health ? health.mode === 'demo' ? '演示模式' : 'OpenClaw 模式' : '服务未连接'}</span>}
       </header>
       <div className="page-content">
@@ -64,6 +66,7 @@ export default function App() {
         {view === 'prepare' && health?.mode === 'openclaw' && !health.token_configured && <div className="alert error">Gateway Token 尚未配置，请运行本机配置脚本并重启后端。</div>}
 
         {healthPoll.error && <div className="alert error" role="alert">后端连接暂时不可用，正在重连。<button className="text-button" onClick={healthPoll.refresh}>检查连接</button></div>}
+        {view === 'project' && <ProjectPage health={health} onCreated={state => { historyPoll.refresh(); update(state, true) }} />}
         {view === 'prepare' && <PreparePage health={health} form={form} setForm={setForm} onCreated={state => { historyPoll.refresh(); update(state, true) }} />}
         {view === 'history' && <HistoryPage history={history} loaded={historyPoll.loaded} onDelete={remove} />}
         {sessionId && <InterviewPage key={sessionId} id={sessionId} onUpdate={update} onPrepare={value => { setForm(value); window.location.hash = 'prepare' }} />}
