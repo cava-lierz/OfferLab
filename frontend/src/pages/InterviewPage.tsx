@@ -86,6 +86,6 @@ export default function InterviewPage({ id, onUpdate, onPrepare }: {
           {finishConfirm && <div className="confirm-box"><p>结束后将依据已保存的回答生成报告，未提交的草稿不会计入。</p><button className="primary" disabled={busy || pending} onClick={() => action('finish')}>确认结束</button><button className="text-button" disabled={busy} onClick={() => setFinishConfirm(false)}>继续回答</button></div>}</>}
       </section><div className="tip"><strong>{session.status === 'reporting' ? '复盘会关注什么' : '给自己一点思考时间'}</strong><p>{session.status === 'reporting' ? '表达结构、项目深度、岗位匹配与反思能力。反馈会结合回答原文，并给出下一步练习建议。' : '不确定时可以坦诚说明。清楚地解释思考过程，也是一种表达能力。'}</p></div></aside>
     </div>}
-    {session.status === 'completed' && <ReportView session={session} onPractice={onPrepare} />}
+    {session.status === 'completed' && <ReportView session={session} onSaved={accept} onPractice={onPrepare} />}
   </>
 }

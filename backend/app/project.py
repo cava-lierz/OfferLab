@@ -99,3 +99,31 @@ async def import_pr(url):
         raise AppError('读取 GitHub 超时，请重试。', 504) from None
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         raise AppError('暂时无法读取这个 PR，请稍后重试。', 502) from None
+
+
+def preview_pdf(filename, content):
+    from io import BytesIO
+    from pathlib import Path
+    from pypdf import PdfReader
+    from .resume import MAX_BYTES
+
+    title = Path((filename or '').replace('\\', '/')).name[:180]
+    if not title.lower().endswith('.pdf') or not content or len(content) > MAX_BYTES:
+        raise AppError('请选择不超过 5 MB 的 PDF 作品。', 422)
+    try:
+        reader = PdfReader(BytesIO(content))
+        if reader.is_encrypted or not 1 <= len(reader.pages) <= 20:
+            raise AppError('请上传未加密、1–20 页的 PDF。', 422)
+        rows = []
+        for number, page in enumerate(reader.pages, start=1):
+            text = (page.extract_text() or '').replace('\x00', '').strip()
+            rows.append({'id': f'P{number}', 'path': title, 'page': number, 'code': text[:3000],
+                         'truncated': len(text) > 3000})
+    except AppError:
+        raise
+    except Exception:
+        raise AppError('无法读取 PDF，请重新导出后再上传。', 422) from None
+    sha = hashlib.sha256(content).hexdigest()
+    preview_id = hashlib.sha256(f'pdf:{title}:{sha}'.encode()).hexdigest()
+    return {'kind': 'pdf', 'id': preview_id, 'sha': sha, 'title': title,
+            'page_count': len(rows), 'excerpts': rows}

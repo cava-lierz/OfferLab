@@ -5,7 +5,7 @@ import { api } from '../api'
 import { clearDraft, draftKey, readDraft, saveDraft } from '../drafts'
 import { useMutation } from '../hooks'
 import type { Interview, Project, Question } from '../types'
-import { ProjectExcerpt } from './ProjectEvidence'
+import { locationLabel, ProjectExcerpt } from './ProjectEvidence'
 
 export function AnswerComposer({ interviewId, question, project, onSaved }: {
   interviewId: string; question: Question; project?: Project; onSaved: (state: Interview) => void
@@ -41,8 +41,8 @@ export function AnswerComposer({ interviewId, question, project, onSaved }: {
     {project && <div><button type="button" className="secondary" aria-expanded={showRefs} onClick={() => setShowRefs(!showRefs)}>指给我看</button>
       <p className="muted">{draft.excerpt_id ? `已引用 ${draft.excerpt_id}` : question.followup ? '请选一处片段支撑本轮回答。' : '你可以引用自己负责的片段。'}</p>
       {showRefs && project.excerpts.map(item => <div key={item.id} className="project-choice">
-        <label><input type="radio" name="evidence" disabled={busy} checked={draft.excerpt_id === item.id} onChange={() => edit(draft.text, item.id)} /> 引用 {item.id} · 第 {item.start}–{item.end} 行</label>
-        <ProjectExcerpt item={item} /></div>)}
+        <label><input type="radio" name="evidence" disabled={busy} checked={draft.excerpt_id === item.id} onChange={() => edit(draft.text, item.id)} /> 引用 {item.id} · {locationLabel(item)}</label>
+        <ProjectExcerpt item={item} pdfUrl={`/api/interviews/${interviewId}/portfolio.pdf`} /></div>)}
     </div>}
     {error && <div className="alert error" role="alert">{error} 原内容再次提交会核对保存状态。</div>}
     <div className="answer-footer"><span>{draft.text.length} / 8000 · {stored ? '草稿保存在当前浏览器' : '浏览器无法保存草稿，请暂勿关闭页面'}</span>

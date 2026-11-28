@@ -2,6 +2,7 @@ import time
 import uuid
 from .store import AppError
 from . import validation
+from .coaching import checked_coaching, evidence_location
 
 
 def uid():
@@ -46,6 +47,23 @@ class Engine:
         return {'id': uid(), 'main_index': index, 'followup': followup,
                 'topic': state['plan'][index]['topic'],
                 'text': question or state['plan'][index]['question']}
+
+    def adopt_resume_line(self, interview_id, value, previous):
+        value = value.strip()
+        if not 1 <= len(value) <= 500:
+            raise AppError('简历表述限 1–500 字。', 422)
+        with self.store.lease(interview_id) as owner:
+            state = self.store.get(interview_id)
+            if state['status'] != 'completed' or not (state.get('report') or {}).get('coaching'):
+                raise AppError('请先完成岗位定向面试。', 409)
+            current = state.get('adopted_resume_line')
+            if value == current:
+                return state
+            if current != previous:
+                raise AppError('这条表述已在其他页面修改，请核对最新版本。', 409)
+            state['adopted_resume_line'] = value
+            self.store.save(state, owner, release=True)
+            return state
 
     @staticmethod
     def pending(state):
@@ -226,7 +244,11 @@ class Engine:
         elif state['status'] == 'reporting':
             # Completed analyses are hints; original answers remain the source of truth.
             snapshot = dict(state, question_reviews=self.store.completed_reviews(state['id']))
-            state['report'] = validation.report(generate(provider, 'report', snapshot), state['answers'], state['mode'])
+            raw = generate(provider, 'report', snapshot)
+            report = validation.report(raw, state['answers'], state['mode'])
+            if (state.get('project') or {}).get('target_role'):
+                report['coaching'] = checked_coaching(raw.get('coaching'), state)
+            state['report'] = report
             if state.get('research'):
                 state['report']['sources'] = state['research']['sources']
             state['status'] = 'completed'
@@ -251,11 +273,24 @@ def markdown_report(state):
     lines += ['评价仅用于训练反馈，不表示真实招聘录用概率。', '', '## 完整问答', '']
     project = state.get('project')
     if project:
-        lines += ['简历原句：' + state['resume'], '', '作品：' + project['url'], '固定提交：' + project['sha'], '']
+        lines += ['简历原句：' + state['resume'], '', '作品：' + (project.get('url') or project['title']),
+                  ('文件 SHA-256：' if project.get('kind') == 'pdf' else '固定提交：') + project['sha'], '']
     for answer in state['answers']:
         lines += ['### ' + answer['question']['text'], '', answer['text'], '']
         if project and answer.get('excerpt_id'):
             ref = next(r for r in project['excerpts'] if r['id'] == answer['excerpt_id'])
-            lines += ['本轮指证：' + ref['path'], '<' + ref['url'] + '>', '',
-                      *['    ' + line for line in ref['code'].split('\n')], '']
+            lines += ['本轮指证：' + evidence_location(ref)]
+            if ref.get('url'):
+                lines.append('<' + ref['url'] + '>')
+            lines += ['', *['    ' + line for line in ref['code'].split('\n')], '']
+            if ref.get('note'):
+                lines += ['候选人对该页的说明：' + ref['note'], '']
+    if review := report.get('coaching'):
+        ref = next(r for r in project['excerpts'] if r['id'] == review['excerpt_id'])
+        lines += ['## 岗位定向复盘', '', '目标岗位：' + project['target_role'], '招聘要求：' + state['jd'],
+                  '回答原话：' + review['answer_quote'], '作品位置：' + evidence_location(ref),
+                  ('候选人页面说明：' if review['source_field'] == 'note' else '作品原文：') + review['work_quote'],
+                  '已有依据：' + review['match'], '待补充：' + review['gap'], '', '简历建议：' + review['resume_line']]
+        if state.get('adopted_resume_line'):
+            lines += ['', '已采纳的简历表述：' + state['adopted_resume_line']]
     return '\n'.join(lines)

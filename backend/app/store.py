@@ -25,6 +25,8 @@ class Store:
             db.execute('CREATE TABLE IF NOT EXISTS workers (id TEXT PRIMARY KEY, heartbeat REAL NOT NULL)')
             db.execute('''CREATE TABLE IF NOT EXISTS project_previews (
                 id TEXT PRIMARY KEY, snapshot TEXT NOT NULL, expires REAL NOT NULL)''')
+            db.execute('''CREATE TABLE IF NOT EXISTS portfolio_pdfs (
+                scope TEXT NOT NULL, owner TEXT NOT NULL, content BLOB NOT NULL, PRIMARY KEY(scope, owner))''')
             db.execute('''CREATE TABLE IF NOT EXISTS creation_requests (
                 request_id TEXT PRIMARY KEY, interview_id TEXT NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS question_reviews (
@@ -59,25 +61,44 @@ class Store:
                     return saved
             db.execute("INSERT INTO interviews(id,state) VALUES (?,?)",
                        (state['id'], json.dumps(state, ensure_ascii=False)))
+            project = state.get('project') or {}
+            if project.get('kind') == 'pdf':
+                copied = db.execute("""INSERT INTO portfolio_pdfs SELECT 'interview', ?, f.content
+                    FROM portfolio_pdfs f JOIN project_previews p ON p.id=f.owner
+                    WHERE f.scope='preview' AND f.owner=? AND p.expires>?""", (state['id'], project['id'], time.time()))
+                if not copied.rowcount:
+                    raise AppError('PDF 预览已过期，请重新上传。', 410)
         return state
 
-    def save_preview(self, snapshot):
+    def save_preview(self, snapshot, pdf=None):
         now = time.time()
         with self.connection() as db:
+            db.execute("DELETE FROM portfolio_pdfs WHERE scope='preview' AND owner IN (SELECT id FROM project_previews WHERE expires<=?)", (now,))
             db.execute('DELETE FROM project_previews WHERE expires <= ?', (now,))
             db.execute('INSERT OR REPLACE INTO project_previews VALUES (?,?,?)',
                        (snapshot['id'], json.dumps(snapshot, ensure_ascii=False), now + 86400))
+            if pdf is not None:
+                db.execute("INSERT OR REPLACE INTO portfolio_pdfs VALUES ('preview',?,?)", (snapshot['id'], pdf))
+
+    def pdf(self, owner, scope):
+        with self.connection() as db:
+            row = db.execute('''SELECT content FROM portfolio_pdfs WHERE owner=? AND scope=?
+                AND (scope='interview' OR EXISTS (SELECT 1 FROM project_previews p WHERE p.id=owner AND expires>?))''',
+                (owner, scope, time.time())).fetchone()
+        if not row:
+            raise AppError('PDF 不存在或预览已过期。', 404)
+        return row[0]
 
     def select_project(self, preview_id, ids):
         with self.connection() as db:
             row = db.execute('SELECT snapshot FROM project_previews WHERE id=? AND expires>?',
                              (preview_id, time.time())).fetchone()
         if not row:
-            raise AppError('PR 预览已过期，请重新导入。', 410)
+            raise AppError('作品预览已过期，请重新导入。', 410)
         project = json.loads(row[0])
         selected = [item for item in project['excerpts'] if item['id'] in ids]
         if not 1 <= len(selected) <= 3 or len(selected) != len(ids):
-            raise AppError('请选择 1 至 3 个不同的本次 PR 片段。', 422)
+            raise AppError('请选择 1 至 3 个不同的本次作品片段。', 422)
         return {**project, 'excerpts': selected}
 
     def get(self, interview_id):
@@ -90,6 +111,7 @@ class Store:
     def delete(self, interview_id):
         # One transaction fences in-flight workers: their saves only UPDATE existing rows.
         with self.connection() as db:
+            db.execute("DELETE FROM portfolio_pdfs WHERE scope='interview' AND owner=?", (interview_id,))
             db.execute('DELETE FROM interviews WHERE id=?', (interview_id,))
             db.execute('DELETE FROM question_reviews WHERE interview_id=?', (interview_id,))
 

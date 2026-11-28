@@ -1,9 +1,10 @@
 import { PreparationSources } from './PreparationSources'
+import { RoleReview } from './RoleReview'
 import { ProjectReplay } from './ProjectEvidence'
 import type { Interview, Preparation } from '../types'
 
-export function ReportView({ session, onPractice }: {
-  session: Interview; onPractice: (form: Preparation) => void
+export function ReportView({ session, onPractice, onSaved }: {
+  session: Interview; onSaved: (value: Interview) => void; onPractice: (form: Preparation) => void
 }) {
   const report = session.report
   if (!report) return null
@@ -16,6 +17,7 @@ export function ReportView({ session, onPractice }: {
       </div>
       <a className="light-button button-link" href={`/api/interviews/${session.id}/export`}>导出 Markdown 报告</a>
     </div>
+    {report.coaching && <RoleReview session={session} review={report.coaching} onSaved={onSaved} />}
     {session.project && <ProjectReplay session={session} />}
     <div className="report-grid">
       {report.dimensions.map(item => <section className="card dimension" key={item.name}>

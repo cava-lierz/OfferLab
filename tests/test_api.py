@@ -59,6 +59,39 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(.02)
         self.fail(f'Background job did not reach {status}')
 
+    async def test_pdf_preview_lifetime_and_image_page_notes(self):
+        from io import BytesIO
+        from pypdf import PdfWriter
+        from backend.app.main import store
+        pdf = PdfWriter()
+        pdf.add_blank_page(width=144, height=144)
+        buffer = BytesIO(); pdf.write(buffer); content = buffer.getvalue()
+        response = await self.client.post('/api/projects/pdf', files={'file': ('art.pdf', content)})
+        self.assertEqual(response.status_code, 200)
+        preview = response.json()
+        form = {'request_id':'portfolio-test', 'claim':'我比较了两版界面设计。', 'preview_id':preview['id'], 'excerpt_ids':['P1'],
+                'target_role':'产品经理', 'requirement':'能够用用户访谈验证原型。'}
+        for invalid in ({}, {'page_notes': {'P2': '错误页面'}}, {'requirement':''}, {'page_notes': {'P1':'长' * 501}}):
+            r = await self.client.post('/api/projects/interviews', json=form | invalid)
+            self.assertEqual(r.status_code, 422)
+        form['page_notes'] = {'P1': '设计了回执按钮。'}
+        state = (await self.client.post('/api/projects/interviews', json=form)).json()
+        self.assertEqual(state['project']['excerpts'][0]['note'], form['page_notes']['P1'])
+        self.assertEqual(state['jd'], form['requirement'])
+        self.assertEqual((await self.client.post('/api/projects/interviews', json=form | {'requirement':'另一条要求'})).status_code, 409)
+        preview_url = '/api/projects/previews/' + preview['id'] + '/portfolio.pdf'
+        saved_url = '/api/interviews/' + state['id'] + '/portfolio.pdf'
+        self.assertEqual((await self.client.get(preview_url)).content, content)
+        with store.connection() as db:
+            db.execute('UPDATE project_previews SET expires=0 WHERE id=?', (preview['id'],))
+        self.assertEqual((await self.client.get(preview_url)).status_code, 404)
+        saved = await self.client.get(saved_url)
+        self.assertEqual(saved.headers['content-type'], 'application/pdf'); self.assertEqual(saved.content,content)
+        await self.client.delete('/api/interviews/' + state['id'])
+        self.assertEqual((await self.client.get(saved_url)).status_code, 404)
+        r = await self.client.post('/api/projects/pdf', files={'file':('art.pdf',b'not a PDF')})
+        self.assertEqual(r.status_code,422)
+
     async def test_http_end_to_end(self):
         result = await self.client.post('/api/interviews', json={'role': '项目实习生', 'resume': '我组织校园项目访谈，设计原型，并参与开发与验证，完成了团队合作项目。', 'main_count': 1})
         self.assertEqual(result.status_code, 201)

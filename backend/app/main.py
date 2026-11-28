@@ -11,7 +11,7 @@ from .jobs import JobRunner
 from .engine import Engine, markdown_report
 from .provider import DemoProvider, OpenClawProvider, ROOT
 from .resume import extract_resume, MAX_BYTES
-from .project import import_pr
+from .project import import_pr, preview_pdf
 
 load_dotenv(ROOT / '.env', interpolate=False)
 MODE = os.getenv('OFFERLAB_MODE', 'demo')
@@ -75,6 +75,9 @@ class ProjectInterview(BaseModel):
     preview_id: str = Field(pattern=r'^[0-9a-f]{64}$')
     excerpt_ids: list[str] = Field(min_length=1, max_length=3)
     request_id: str = Field(min_length=8, max_length=100)
+    target_role: str = Field(default='', max_length=80)
+    requirement: str = Field(default='', max_length=500)
+    page_notes: dict[str, str] = Field(default_factory=dict, max_length=3)
 
 
 @app.post('/api/projects/preview')
@@ -87,8 +90,58 @@ async def preview_project(body: ImportProject):
 @app.post('/api/projects/interviews', status_code=201)
 def project_interview(body: ProjectInterview):
     project = store.select_project(body.preview_id, body.excerpt_ids)
-    return engine.create('项目面试 · ' + project['title'][:85], body.claim, main_count=1,
+    if bool(body.target_role) != bool(body.requirement):
+        raise AppError('目标岗位和招聘要求请一起填写。', 422)
+    if body.target_role:
+        project['target_role'] = body.target_role
+    if body.page_notes and (project.get('kind') != 'pdf' or set(body.page_notes) - set(body.excerpt_ids)):
+        raise AppError('说明必须对应已选的作品页。', 422)
+    for row in project['excerpts']:
+        if 'page' in row:
+            note = body.page_notes.get(row['id'], '').strip()
+            if len(note) > 500 or (not row['code'] and not note):
+                raise AppError('图片页需要填写作品说明，每页最多 500 字。', 422)
+            if note:
+                row['note'] = note
+    return engine.create('项目面试 · ' + (body.target_role or project['title'][:85]), body.claim, jd=body.requirement, main_count=1,
                          mode=MODE, request_id=body.request_id, project=project)
+
+
+@app.post('/api/projects/pdf')
+def upload_portfolio(file: UploadFile = File(...)):
+    try:
+        content = file.file.read(MAX_BYTES + 1)
+        snapshot = preview_pdf(file.filename, content)
+        store.save_preview(snapshot, content)
+        return snapshot
+    finally:
+        file.file.close()
+
+
+def pdf_response(owner, scope):
+    return Response(store.pdf(owner, scope), media_type='application/pdf', headers={
+        'Content-Disposition': 'inline; filename="portfolio.pdf"', 'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox"})
+
+
+@app.get('/api/projects/previews/{preview_id}/portfolio.pdf')
+def preview_document(preview_id: str):
+    return pdf_response(preview_id, 'preview')
+
+
+@app.get('/api/interviews/{interview_id}/portfolio.pdf')
+def interview_document(interview_id: str):
+    return pdf_response(interview_id, 'interview')
+
+
+class AdoptResumeLine(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    previous: str | None = Field(default=None, max_length=500)
+
+
+@app.post('/api/interviews/{interview_id}/resume-line')
+def adopt_resume_line(interview_id: str, body: AdoptResumeLine):
+    return engine.adopt_resume_line(interview_id, body.text, body.previous)
 
 
 class NextQuestion(BaseModel):
